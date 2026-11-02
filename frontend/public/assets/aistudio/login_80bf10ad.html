@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Expense Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Welcome To Techy Traker</h2>
+        
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-gray-700 font-medium mb-1">Email Address</label>
+                <input type="email" id="email" required placeholder="Email" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+                <label class="block text-gray-700 font-medium mb-1">Password</label>
+                <input type="password" id="password" required placeholder="Password" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <button 
+                type="submit" 
+                id="loginBtn" 
+                class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition duration-100 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+                Login
+            </button>
+        </form>
+
+        <p id="msg" class="text-center text-sm mt-4 font-medium"></p>
+
+        <p class="text-center text-gray-600 text-sm mt-6">
+            Don't have an account? <a href="/register" class="text-indigo-600 font-semibold hover:underline">Sign up</a>
+        </p>
+    </div>
+
+    <script>
+        // After logout: clear any leftover token and stay on login
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("logged_out") === "1") {
+                try {
+                    localStorage.removeItem("jwt_token");
+                    localStorage.removeItem("user_id");
+                    localStorage.removeItem("user_name");
+                    localStorage.clear();
+                    sessionStorage.clear();
+                } catch (e) {}
+                // Clean URL (remove ?logged_out=1) without reload loop
+                history.replaceState(null, "", "/");
+                return; // do NOT redirect to dashboard
+            }
+            // Already logged in → dashboard
+            if (localStorage.getItem("jwt_token")) {
+            window.location.replace("/dashboard?msg=already_logged_in");
+        }
+        })();
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msgEl = document.getElementById('msg');
+            const loginBtn = document.getElementById('loginBtn');
+
+            // 1. Clear old messages & set button to loading + disabled state
+            msgEl.innerText = "";
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = `
+                <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Logging in...</span>
+            `;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    const userId = data.user_id || data.userId || data.id;
+                    localStorage.setItem('jwt_token', data.token);
+                    localStorage.setItem('user_id', data.user_id);
+                    localStorage.setItem('user_name', data.name);
+                    if (userId) {
+                        sessionStorage.setItem('user_id', userId);
+                    }
+                    msgEl.className = "text-center text-sm mt-4 font-medium text-green-600";
+                    msgEl.innerText = "Login successful! Redirecting...";
+
+                    setTimeout(() => window.location.replace("/dashboard"));
+                } else {
+                    msgEl.className = "text-center text-sm mt-4 font-medium text-red-600";
+                    msgEl.innerText = data.error || "Invalid credentials";
+                }
+            } catch (err) {
+                msgEl.className = "text-center text-sm mt-4 font-medium text-red-600";
+                msgEl.innerText = "Something went wrong. Please try again.";
+            } finally {
+                // 2. Reset button back to normal after API call completes
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = "Login";
+            }
+        });
+    </script>
+</body>
+</html>

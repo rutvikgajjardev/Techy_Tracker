@@ -1,0 +1,1682 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Group Expense Tracker - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
+    <!-- Top Navbar -->
+    <header class="bg-white border-b px-3 sm:px-6 py-3 flex justify-between items-center shadow-sm gap-2 shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <!-- Mobile: 3-line hamburger (GPay style) -->
+        <button type="button" id="sidebarToggleBtn" onclick="toggleSidebar()" title="Expenses menu"
+          class="md:hidden flex flex-col justify-center items-center gap-[5px] w-10 h-10 rounded-lg hover:bg-gray-100 transition cursor-pointer shrink-0"
+          aria-label="Open expenses menu">
+          <span class="block w-5 h-[2px] bg-gray-800 rounded-full"></span>
+          <span class="block w-5 h-[2px] bg-gray-800 rounded-full"></span>
+          <span class="block w-5 h-[2px] bg-gray-800 rounded-full"></span>
+        </button>
+        <h1 class="text-base sm:text-lg font-bold text-indigo-600 flex items-center gap-1.5 truncate">
+          <span class="shrink-0">💸</span>
+          <span class="truncate">Techy Tracker</span>
+        </h1>
+      </div>
+      <div class="flex items-center gap-2 sm:gap-4 shrink-0">
+        <span id="userNameDisplay" class="text-gray-700 font-medium text-xs sm:text-sm truncate max-w-[100px] sm:max-w-none">Hello, {{ username }}</span>
+        <button type="button" onclick="handleLogout()" class="bg-red-500 hover:bg-red-600 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition cursor-pointer">
+          Logout
+        </button>
+      </div>
+    </header>
+
+    <!-- Main App Container -->
+    <div class="flex flex-1 overflow-hidden relative">
+      <!-- Mobile overlay when sidebar open -->
+      <div id="sidebarOverlay" onclick="closeSidebar()"
+        class="hidden fixed inset-0 bg-black/40 z-30 md:hidden" aria-hidden="true"></div>
+
+      <!-- LEFT SIDEBAR: desktop always visible, mobile drawer -->
+      <aside id="expenseSidebar"
+        class="fixed md:relative top-[53px] bottom-0 md:top-auto md:bottom-auto left-0 z-40 md:z-auto
+               w-[min(20rem,85vw)] md:w-80 bg-white border-r flex flex-col h-auto md:h-full
+               transform -translate-x-full md:translate-x-0
+               transition-transform duration-300 ease-out
+               shadow-xl md:shadow-none">
+        <div class="p-4 border-b bg-gray-50 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-gray-700 text-sm">Expenses</span>
+            <div class="flex items-center gap-2">
+              <span id="expenseCount" class="text-[11px] text-gray-400"></span>
+              <button type="button" onclick="closeSidebar()" title="Close"
+                class="md:hidden w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center text-gray-500 cursor-pointer">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Search -->
+          <div class="relative">
+            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+            </svg>
+            <input id="expenseSearch" type="text" autocomplete="off" maxlength="100"
+              placeholder="Search title, person, category..."
+              oninput="onSearchInput(this.value)" onkeydown="onSearchKeydown(event)"
+              class="w-full bg-white border rounded-lg pl-9 pr-8 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <button type="button" id="expenseSearchClear" onclick="clearSearch()" title="Clear"
+              class="hidden absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <!-- Status filter -->
+          <div id="statusFilter" class="flex gap-1.5">
+            <button type="button" data-status="All" onclick="setStatusFilter('All')" class="status-chip flex-1 text-xs font-medium py-1.5 rounded-lg border transition cursor-pointer">All</button>
+            <button type="button" data-status="Pending" onclick="setStatusFilter('Pending')" class="status-chip flex-1 text-xs font-medium py-1.5 rounded-lg border transition cursor-pointer">Pending</button>
+            <button type="button" data-status="Completed" onclick="setStatusFilter('Completed')" class="status-chip flex-1 text-xs font-medium py-1.5 rounded-lg border transition cursor-pointer">Completed</button>
+          </div>
+        </div>
+        <div id="expenseSidebarList" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <p class="text-gray-400 text-xs text-center py-4">Loading expenses...</p>
+        </div>
+      </aside>
+
+      <!-- Add Expense button: desktop near sidebar edge, mobile floating bottom-right -->
+      <button type="button" onclick="showAddForm()" title="Add Expense"
+        class="absolute z-20 top-3 hidden md:flex w-9 h-9 rounded-full bg-white border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 items-center justify-center shadow-sm transition cursor-pointer"
+        style="left: calc(20rem + 12px)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      </button>
+      <!-- Mobile FAB -->
+      <button type="button" onclick="showAddForm(); closeSidebar();" title="Add Expense"
+        class="md:hidden fixed bottom-5 right-5 z-20 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 flex items-center justify-center transition cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      </button>
+
+      <!-- RIGHT MAIN AREA -->
+      <main class="flex-1 bg-gray-50 p-4 sm:p-6 md:p-8 overflow-y-auto flex flex-col items-center justify-start min-w-0">
+        <div id="successToast"
+          class="pointer-events-none fixed top-20 left-1/2 z-[80] -translate-x-1/2 -translate-y-4 opacity-0 scale-95
+                 bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg font-medium text-sm
+                 transition-all duration-300 ease-out">
+          Expense added successfully!
+        </div>
+
+        <div id="mainContentCard" class="w-full max-w-2xl bg-white rounded-2xl shadow-sm border p-4 sm:p-6 md:p-8">
+          <!-- Default Welcome View -->
+          <div id="welcomeView" class="text-center py-16">
+            <div class="text-5xl mb-4">📊</div>
+            <h3 class="text-xl font-bold text-gray-700">Welcome to Group Expense Tracker</h3>
+            <p class="text-gray-500 text-sm mt-2">
+              Left side par thi koi expense select karo details jova mate, ya upar round
+              <span class="font-bold text-indigo-600">⊕</span> button par click karine navo expense add karo.
+            </p>
+          </div>
+
+          <!-- Add / Edit Expense Form View -->
+          <div id="addExpenseFormView" class="hidden">
+            <h2 class="text-xl font-bold text-gray-800 mb-6 pb-2 border-b">Add New Expense</h2>
+            <form id="expenseForm" onsubmit="submitExpense(event)" class="space-y-4">
+              <!-- 1. Title -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Title / Description</label>
+                <input type="text" id="title" required placeholder="e.g. Dinner at Restaurant"
+                  class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+
+              <!-- 2. Amount & Category -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
+                  <input type="number" id="amount" step="0.01" min="1" required placeholder="1200"
+                    oninput="updateSelectionAndPreview()"
+                    class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select id="categorySelect" onchange="handleCategoryChange()"
+                    class="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="" disabled selected>Loading categories...</option>
+                  </select>
+
+                  <div id="customCategoryWrapper" class="hidden mt-2 gap-2">
+                    <input type="text" id="customCategoryInput" placeholder="Enter new category..."
+                      class="w-full px-3 py-1.5 text-sm border border-indigo-400 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                    <button type="button" onclick="cancelCustomCategory()"
+                      class="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. Expense By -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Expense By</label>
+                <select id="expenseBy" required onchange="handleExpenseByChange()"
+                  class="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <option value="" disabled selected>Select person who paid</option>
+                </select>
+              </div>
+
+              <!-- 4. Share With (Multi-Select Dropdown) -->
+              <div class="relative" id="multiSelectContainer">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Share With</label>
+                <button type="button" onclick="toggleDropdownMenu()" id="dropdownBtn"
+                  class="w-full border rounded-lg px-3 py-2 bg-white text-left flex items-center justify-between focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <span id="selectedUsersText" class="text-gray-400 truncate text-sm">Select members to share expense...</span>
+                  <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
+
+                <div id="dropdownMenu" class="hidden absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto p-2 space-y-1">
+                  <div id="userCheckboxList" class="space-y-1">
+                    <p class="text-xs text-gray-400 p-2">Loading users...</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. Live Split Calculation Preview -->
+              <div id="splitPreviewBox" class="hidden bg-indigo-50 border border-indigo-100 rounded-lg p-3 items-center justify-between text-sm">
+                <div class="text-indigo-800">
+                  <span class="font-semibold">Live Split:</span>
+                  <span id="splitCountText" class="ml-1 text-indigo-600"></span>
+                </div>
+                <div class="text-indigo-900 font-bold text-base" id="perPersonAmount">₹0.00 / person</div>
+              </div>
+
+              <p id="formErrorMsg" class="text-center text-sm font-medium text-red-600"></p>
+
+              <div class="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onclick="cancelForm()"
+                  class="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">Cancel</button>
+                <button type="submit" id="submitBtn"
+                  class="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition disabled:opacity-60">Submit</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Expense Detail View -->
+          <div id="expenseDetailView" class="hidden">
+            <!-- Loader -->
+            <div id="detailLoader" class="hidden flex-col items-center justify-center py-20">
+              <div class="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p class="mt-4 text-sm text-gray-500 font-medium">Loading expense details...</p>
+            </div>
+
+            <!-- Actual detail content -->
+            <div id="detailContent" class="hidden">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+                <h2 class="text-lg font-bold text-indigo-600 tracking-wide">Expense Details</h2>
+                <div class="flex items-center gap-2">
+                  <button type="button" id="detailEditBtn" onclick="startEditExpense()"
+                    class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 7.125L16.875 4.5" />
+                    </svg>
+                    Edit
+                  </button>
+                  <button type="button" id="detailDeleteBtn" onclick="deleteExpenseFromDetail()"
+                    class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-between items-center pb-4 border-b mb-6">
+                <h3 id="detailTitle" class="text-2xl font-bold text-gray-800">Expense Title</h3>
+                <span id="detailCategory" class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">Food</span>
+              </div>
+
+              <div class="space-y-4 text-gray-700">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div class="bg-gray-50 p-3 sm:p-4 rounded-xl flex justify-between items-center">
+                    <span class="font-medium text-gray-500 text-sm">Total Amount</span>
+                    <span id="detailAmount" class="text-xl font-bold text-gray-900">₹0</span>
+                  </div>
+                  <div class="bg-indigo-50 p-3 sm:p-4 rounded-xl flex justify-between items-center">
+                    <span class="font-medium text-indigo-600 text-sm">Per Person Share</span>
+                    <span id="detailPerPerson" class="text-xl font-bold text-indigo-700">₹0</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div class="bg-gray-50 p-3 rounded-xl">
+                    <span class="block text-xs text-gray-400">Status</span>
+                    <span id="detailStatus" class="font-semibold text-yellow-600">Pending</span>
+                  </div>
+                  <div class="bg-gray-50 p-3 rounded-xl">
+                    <span class="block text-xs text-gray-400">Expense By</span>
+                    <span id="detailCreator" class="font-semibold">-</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div class="bg-gray-50 p-4 rounded-xl">
+                    <span class="block text-xs text-gray-400 mb-1">Created At</span>
+                    <span id="detailDate" class="text-sm font-medium block"></span>
+                    <span id="detailCreatedByTag" class="inline-block mt-2 text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full"></span>
+                  </div>
+                  <div class="bg-gray-50 p-4 rounded-xl">
+                    <span class="block text-xs text-gray-400 mb-1">Edited by</span>
+                    <span id="detailEditedBy" class="text-sm font-medium block">-</span>
+                    <span id="detailEditedAt" class="block mt-1 text-xs text-gray-500">-</span>
+                  </div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                  <span class="block text-xs text-gray-400 mb-2">Shared With Members</span>
+                  <div id="detailShares" class="flex gap-2 flex-wrap"></div>
+                </div>
+              </div>
+            </div>
+            <!-- end detailContent -->
+          </div>
+        </div>
+
+        <!-- Logs card -->
+        <div id="logsCard" class="hidden w-full max-w-2xl bg-white rounded-2xl shadow-sm border p-4 sm:p-6 md:p-8 mt-4 sm:mt-6 mb-8">
+          <h2 class="text-lg font-bold text-indigo-600 tracking-wide mb-6">Logs</h2>
+          <div id="logsLoader" class="hidden flex-col items-center justify-center py-10">
+            <div class="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+            <p class="mt-3 text-sm text-gray-500 font-medium">Loading logs...</p>
+          </div>
+          <div id="logsList"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Custom Confirm / Alert Dialog -->
+    <div id="appDialog" class="hidden fixed inset-0 z-[70] items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4"
+      onclick="if (event.target === this) closeDialog(false)">
+      <div id="appDialogCard"
+        class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-gray-100 transform transition-all duration-200 ease-out scale-95 opacity-0"
+        role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+        <div id="appDialogIcon" class="flex items-center justify-center w-14 h-14 rounded-full mb-5 mx-auto"></div>
+        <h3 id="appDialogTitle" class="text-xl font-extrabold text-center text-gray-800 mb-2"></h3>
+        <p id="appDialogMessage" class="text-gray-500 text-center text-sm mb-6 leading-relaxed whitespace-pre-line"></p>
+        <div class="flex gap-3">
+          <button type="button" id="appDialogCancel" onclick="closeDialog(false)"
+            class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition cursor-pointer focus:outline-none focus:ring-4 focus:ring-gray-200">Cancel</button>
+          <button type="button" id="appDialogConfirm" onclick="closeDialog(true)"
+            class="flex-1 py-2.5 text-white font-semibold rounded-xl transition cursor-pointer focus:outline-none focus:ring-4"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logout Confirm / Loading Modal -->
+    <div id="logoutModal" class="hidden fixed inset-0 z-[60] items-center justify-center bg-gray-900/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 mx-4 border border-red-100">
+        <!-- Confirm state -->
+        <div id="logoutConfirmState">
+          <div class="flex items-center justify-center w-14 h-14 rounded-full bg-red-50 mb-5 mx-auto">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-extrabold text-center text-gray-800 mb-2">Logout?</h3>
+          <p class="text-gray-500 text-center text-sm mb-6">Are you sure you want to log out of your account?</p>
+          <div class="flex gap-3">
+            <button type="button" onclick="closeLogoutModal()"
+              class="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium rounded-xl transition cursor-pointer">Cancel</button>
+            <button type="button" onclick="confirmLogout()"
+              class="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition cursor-pointer">Yes, Logout</button>
+          </div>
+        </div>
+
+        <!-- Loading state -->
+        <div id="logoutLoadingState" class="hidden flex-col items-center justify-center py-6">
+          <div class="w-12 h-12 border-4 border-red-100 border-t-red-500 rounded-full animate-spin"></div>
+          <p class="mt-4 text-sm font-medium text-gray-600">Logging out...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Already logged in modal -->
+    <div id="alreadyLoggedInModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-gray-900/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 mx-4 border border-indigo-100">
+        <div class="flex items-center justify-center w-14 h-14 rounded-full bg-indigo-50 mb-5 mx-auto">
+          <span class="text-3xl">👋</span>
+        </div>
+        <h3 class="text-xl font-extrabold text-center text-gray-800 mb-2">Welcome Back!</h3>
+        <p class="text-gray-500 text-center text-sm mb-6 leading-relaxed">
+          You are already logged into your account. To access the login or register page, you need to
+          <span class="font-bold text-red-500">Logout</span> first.
+        </p>
+        <button type="button" onclick="closeLoginModal()"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition duration-200 shadow-md shadow-indigo-200 cursor-pointer">
+          Continue to Dashboard
+        </button>
+      </div>
+    </div>
+
+    <script>
+      // ================= AUTH / STATE =================
+      const token = localStorage.getItem("jwt_token");
+
+      function parseJwt(t) {
+        try {
+          const b64 = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+          return JSON.parse(atob(b64));
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Token is the source of truth for "who is logged in"
+      const tokenPayload = token ? parseJwt(token) || {} : {};
+      const currentUserId =
+        Number(tokenPayload.user_id) ||
+        parseInt(localStorage.getItem("user_id")) ||
+        null;
+
+      let allExpensesData = [];
+      let allUsersData = [];
+      let allCategoriesData = [];
+      let editingExpenseId = null; // null = create, number = update this id
+      let currentDetailExpense = null;
+      let isLoggingOut = false;
+      const fetchedDetailIds = new Set();
+
+      function clearAuthStorage() {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch (e) {}
+      }
+
+      // Token expire / 401 -> dialog vagar direct logout (server session pan clear thase)
+      function forceLogout() {
+        if (isLoggingOut) return;
+        isLoggingOut = true;
+        clearAuthStorage();
+        window.location.replace("/logout");
+      }
+
+      // Not logged in or token expired -> back to login
+      if (!token || (tokenPayload.exp && tokenPayload.exp * 1000 < Date.now())) {
+        forceLogout();
+        throw new Error("Not authenticated"); // stop rest of script
+      }
+
+      const displayName = tokenPayload.name || localStorage.getItem("user_name");
+      if (displayName) {
+        document.getElementById("userNameDisplay").innerText = "Hello, " + displayName;
+      }
+
+      // fetch wrapper: token header + 401 handling
+      async function authFetch(url, options = {}) {
+        const res = await fetch(url, {
+          ...options,
+          headers: { ...(options.headers || {}), Authorization: "Bearer " + token },
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          forceLogout();
+          throw new Error("Unauthorized");
+        }
+        return res;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      // ================= CUSTOM DIALOGS / TOAST =================
+      const DIALOG_THEMES = {
+        danger: {
+          wrap: "bg-red-50",
+          color: "text-red-500",
+          btn: "bg-red-500 hover:bg-red-600 focus:ring-red-200",
+          icon: "M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0",
+        },
+        edit: {
+          wrap: "bg-indigo-50",
+          color: "text-indigo-600",
+          btn: "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-200",
+          icon: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z",
+        },
+        error: {
+          wrap: "bg-red-50",
+          color: "text-red-500",
+          btn: "bg-red-500 hover:bg-red-600 focus:ring-red-200",
+          icon: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z",
+        },
+        info: {
+          wrap: "bg-blue-50",
+          color: "text-blue-600",
+          btn: "bg-blue-600 hover:bg-blue-700 focus:ring-blue-200",
+          icon: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z",
+        },
+        success: {
+          wrap: "bg-green-50",
+          color: "text-green-600",
+          btn: "bg-green-600 hover:bg-green-700 focus:ring-green-200",
+          icon: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+        },
+      };
+
+      let dialogResolver = null;
+      let dialogCloseTimer = null;
+
+      // Promise-based confirm: await showDialog({...}) -> true (confirm) / false (cancel)
+      function showDialog(opts) {
+        const {
+          type = "info",
+          title = "",
+          message = "",
+          confirmText = "OK",
+          cancelText = "Cancel",
+          showCancel = true,
+        } = opts;
+
+        return new Promise((resolve) => {
+          if (dialogResolver) dialogResolver(false); // pehlanu dialog hoy to cancel
+          clearTimeout(dialogCloseTimer);
+          dialogResolver = resolve;
+
+          const theme = DIALOG_THEMES[type] || DIALOG_THEMES.info;
+          const overlay = document.getElementById("appDialog");
+          const card = document.getElementById("appDialogCard");
+          const confirmBtn = document.getElementById("appDialogConfirm");
+          const cancelBtn = document.getElementById("appDialogCancel");
+
+          const iconWrap = document.getElementById("appDialogIcon");
+          iconWrap.className =
+            "flex items-center justify-center w-14 h-14 rounded-full mb-5 mx-auto " + theme.wrap;
+          iconWrap.innerHTML =
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 ' + theme.color +
+            '" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">' +
+            '<path stroke-linecap="round" stroke-linejoin="round" d="' + theme.icon + '" /></svg>';
+
+          document.getElementById("appDialogTitle").textContent = title;
+          document.getElementById("appDialogMessage").textContent = message;
+
+          confirmBtn.textContent = confirmText;
+          confirmBtn.className =
+            "flex-1 py-2.5 text-white font-semibold rounded-xl transition cursor-pointer focus:outline-none focus:ring-4 " +
+            theme.btn;
+          cancelBtn.textContent = cancelText;
+          cancelBtn.classList.toggle("hidden", !showCancel);
+
+          overlay.classList.remove("hidden");
+          overlay.classList.add("flex");
+          void card.offsetWidth; // reflow -> animation chale
+          card.classList.remove("scale-95", "opacity-0");
+          card.classList.add("scale-100", "opacity-100");
+
+          // Danger dialog ma safe side: Cancel par focus
+          (type === "danger" && showCancel ? cancelBtn : confirmBtn).focus();
+        });
+      }
+
+      function closeDialog(result) {
+        if (!dialogResolver) return;
+        const resolve = dialogResolver;
+        dialogResolver = null;
+
+        const overlay = document.getElementById("appDialog");
+        const card = document.getElementById("appDialogCard");
+        card.classList.remove("scale-100", "opacity-100");
+        card.classList.add("scale-95", "opacity-0");
+        dialogCloseTimer = setTimeout(() => {
+          overlay.classList.add("hidden");
+          overlay.classList.remove("flex");
+        }, 180);
+
+        resolve(result);
+      }
+
+      // Sirf OK button vado message popup
+      function showAlert(title, message, type = "error") {
+        return showDialog({ type, title, message, confirmText: "OK", showCancel: false });
+      }
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && dialogResolver) closeDialog(false);
+      });
+
+      let toastHideTimer = null;
+
+      function showToast(message, durationMs) {
+        const toast = document.getElementById("successToast");
+        if (!toast) return;
+        const ms = durationMs == null ? 2000 : durationMs;
+
+        toast.textContent = message;
+        // reset any previous hide timer
+        if (toastHideTimer) {
+          clearTimeout(toastHideTimer);
+          toastHideTimer = null;
+        }
+
+        // force reflow so animation restarts every time
+        toast.classList.remove("opacity-100", "translate-y-0", "scale-100");
+        toast.classList.add("opacity-0", "-translate-y-4", "scale-95");
+        void toast.offsetWidth;
+
+        // show (slide + fade in)
+        toast.classList.remove("opacity-0", "-translate-y-4", "scale-95");
+        toast.classList.add("opacity-100", "translate-y-0", "scale-100");
+
+        toastHideTimer = setTimeout(() => {
+          toast.classList.remove("opacity-100", "translate-y-0", "scale-100");
+          toast.classList.add("opacity-0", "-translate-y-4", "scale-95");
+          toastHideTimer = null;
+        }, ms);
+      }
+
+      // ================= LOGOUT =================
+      function handleLogout() {
+        openLogoutModal();
+      }
+
+      function openLogoutModal() {
+        if (isLoggingOut) return;
+        document.getElementById("logoutConfirmState").classList.remove("hidden");
+        const loading = document.getElementById("logoutLoadingState");
+        loading.classList.add("hidden");
+        loading.classList.remove("flex");
+        const modal = document.getElementById("logoutModal");
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+      }
+
+      function closeLogoutModal() {
+        if (isLoggingOut) return; // loading hoy tyare band na thay
+        const modal = document.getElementById("logoutModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+      }
+
+      // "Yes, Logout" click -> loading + API call + redirect
+      async function confirmLogout() {
+        if (isLoggingOut) return;
+        isLoggingOut = true;
+
+        document.getElementById("logoutConfirmState").classList.add("hidden");
+        const loading = document.getElementById("logoutLoadingState");
+        loading.classList.remove("hidden");
+        loading.classList.add("flex");
+
+        const minDelay = new Promise((r) => setTimeout(r, 800)); // spinner properly dekhay te mate
+
+        try {
+          await fetch("/api/logout", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + token },
+          });
+        } catch (err) {
+          console.error("Logout API error:", err); // fail thay to pan logout continue
+        }
+
+        await minDelay;
+        clearAuthStorage();
+        window.location.replace("/logout"); // Flask session clear + login page par redirect
+      }
+
+      // ================= ALREADY LOGGED IN MODAL =================
+      function closeLoginModal() {
+        const modal = document.getElementById("alreadyLoggedInModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+        history.replaceState({ page: "dashboard" }, "", location.pathname);
+      }
+
+      if (new URLSearchParams(location.search).get("msg") === "already_logged_in") {
+        const modal = document.getElementById("alreadyLoggedInModal");
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+      }
+
+      // ================= BACK BUTTON / PAGE SHOW =================
+      history.pushState({ page: "dashboard" }, "", location.pathname + location.search);
+
+      window.addEventListener("popstate", function () {
+        if (isLoggingOut) return;
+        history.pushState({ page: "dashboard" }, "", location.pathname);
+        if (dialogResolver) {
+          closeDialog(false);
+          return;
+        }
+        if (!localStorage.getItem("jwt_token")) {
+          forceLogout();
+          return;
+        }
+        // Form khulyu hoy to pehla form bandh karo, nahi to logout dialog
+        const formOpen = !document.getElementById("addExpenseFormView").classList.contains("hidden");
+        if (formOpen) {
+          showWelcomeView();
+          return;
+        }
+        openLogoutModal();
+      });
+
+      window.addEventListener("pageshow", function () {
+        if (isLoggingOut) return;
+        if (!localStorage.getItem("jwt_token")) forceLogout();
+      });
+
+      // ================= VIEWS =================
+      // ================= RESPONSIVE SIDEBAR =================
+      function openSidebar() {
+        const side = document.getElementById("expenseSidebar");
+        const overlay = document.getElementById("sidebarOverlay");
+        if (!side) return;
+        side.classList.remove("-translate-x-full");
+        side.classList.add("translate-x-0");
+        if (overlay) {
+          overlay.classList.remove("hidden");
+        }
+        document.body.classList.add("overflow-hidden");
+      }
+
+      function closeSidebar() {
+        const side = document.getElementById("expenseSidebar");
+        const overlay = document.getElementById("sidebarOverlay");
+        if (!side) return;
+        side.classList.add("-translate-x-full");
+        side.classList.remove("translate-x-0");
+        // md: always visible via md:translate-x-0 — class above only for mobile
+        if (overlay) overlay.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+      }
+
+      function toggleSidebar() {
+        const side = document.getElementById("expenseSidebar");
+        if (!side) return;
+        if (side.classList.contains("-translate-x-full")) openSidebar();
+        else closeSidebar();
+      }
+
+      // Close drawer on resize to desktop
+      window.addEventListener("resize", function () {
+        if (window.innerWidth >= 768) closeSidebar();
+      });
+
+      function showWelcomeView() {
+        document.getElementById("welcomeView").classList.remove("hidden");
+        document.getElementById("addExpenseFormView").classList.add("hidden");
+        document.getElementById("expenseDetailView").classList.add("hidden");
+        editingExpenseId = null;
+        hideLogs();
+        if (location.hash === "#add") {
+          history.replaceState({ view: "welcome" }, "", location.pathname);
+        }
+      }
+
+      function showAddForm() {
+        editingExpenseId = null;
+        document.getElementById("welcomeView").classList.add("hidden");
+        document.getElementById("addExpenseFormView").classList.remove("hidden");
+        document.getElementById("expenseDetailView").classList.add("hidden");
+        hideLogs();
+        resetExpenseForm();
+        const h2 = document.querySelector("#addExpenseFormView h2");
+        if (h2) h2.textContent = "Add New Expense";
+        const submitBtn = document.getElementById("submitBtn");
+        if (submitBtn) submitBtn.textContent = "Submit";
+        history.pushState({ view: "add" }, "", "#add");
+      }
+
+      function openExpenseFormForEdit() {
+        document.getElementById("welcomeView").classList.add("hidden");
+        document.getElementById("addExpenseFormView").classList.remove("hidden");
+        document.getElementById("expenseDetailView").classList.add("hidden");
+        cancelCustomCategory();
+        hideLogs();
+        document.getElementById("formErrorMsg").textContent = "";
+      }
+
+      function cancelForm() {
+        showWelcomeView();
+      }
+
+      function resetExpenseForm() {
+        document.getElementById("expenseForm").reset();
+        cancelCustomCategory();
+        document.getElementById("formErrorMsg").textContent = "";
+
+        document.querySelectorAll(".share-user-checkbox").forEach((cb) => {
+          cb.checked = false;
+          cb.disabled = false;
+          cb.dataset.autoLockedPayer = "false";
+        });
+
+        populateCategorySelect();
+        syncMandatoryShareUsers();
+      }
+
+      // ================= CATEGORY =================
+      function handleCategoryChange() {
+        const categorySelect = document.getElementById("categorySelect");
+        const customWrapper = document.getElementById("customCategoryWrapper");
+        const customInput = document.getElementById("customCategoryInput");
+        if (categorySelect.value === "__add_new__") {
+          categorySelect.classList.add("hidden");
+          customWrapper.classList.remove("hidden");
+          customWrapper.classList.add("flex");
+          customInput.focus();
+        }
+      }
+
+      function cancelCustomCategory() {
+        const categorySelect = document.getElementById("categorySelect");
+        const customWrapper = document.getElementById("customCategoryWrapper");
+        const customInput = document.getElementById("customCategoryInput");
+        customWrapper.classList.add("hidden");
+        customWrapper.classList.remove("flex");
+        categorySelect.classList.remove("hidden");
+        if (categorySelect.options.length > 0) {
+          categorySelect.selectedIndex = 0;
+        }
+        customInput.value = "";
+      }
+
+      function populateCategorySelect() {
+        const categorySelect = document.getElementById("categorySelect");
+        categorySelect.innerHTML = "";
+        if (allCategoriesData.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.disabled = true;
+          opt.selected = true;
+          opt.textContent = "No categories yet";
+          categorySelect.appendChild(opt);
+        } else {
+          allCategoriesData.forEach((cat) => {
+            const opt = document.createElement("option");
+            opt.value = cat.id;
+            opt.textContent = cat.name;
+            categorySelect.appendChild(opt);
+          });
+        }
+        const addNewOpt = document.createElement("option");
+        addNewOpt.value = "__add_new__";
+        addNewOpt.textContent = "+ Add New Category...";
+        addNewOpt.className = "font-semibold text-indigo-600";
+        categorySelect.appendChild(addNewOpt);
+      }
+
+      async function fetchCategories() {
+        try {
+          const res = await authFetch("/api/categories");
+          if (res.ok) {
+            allCategoriesData = await res.json();
+            populateCategorySelect();
+          }
+        } catch (err) {
+          if (!isLoggingOut) console.error("Error loading categories:", err);
+        }
+      }
+
+      // New category banavo (ya same naam hoy to existing vapro)
+      async function createCategoryIfNeeded(name) {
+        const existing = allCategoriesData.find(
+          (c) => c.name.toLowerCase() === name.toLowerCase()
+        );
+        if (existing) return existing.id;
+
+        const res = await authFetch("/api/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to create category!");
+        return data.category.id;
+      }
+
+      // ================= USERS / SHARE DROPDOWN =================
+      function toggleDropdownMenu() {
+        document.getElementById("dropdownMenu").classList.toggle("hidden");
+      }
+
+      document.addEventListener("click", function (e) {
+        const container = document.getElementById("multiSelectContainer");
+        const menu = document.getElementById("dropdownMenu");
+        if (container && menu && !container.contains(e.target)) {
+          menu.classList.add("hidden");
+        }
+      });
+
+      async function fetchUsers() {
+        try {
+          const res = await authFetch("/api/users");
+          if (!res.ok) return;
+
+          allUsersData = await res.json();
+          const expenseBySelect = document.getElementById("expenseBy");
+          const userCheckboxList = document.getElementById("userCheckboxList");
+
+          expenseBySelect.innerHTML =
+            '<option value="" disabled selected>Select person who paid</option>';
+          allUsersData.forEach((u) => {
+            const opt = document.createElement("option");
+            opt.value = u.id;
+            opt.textContent = u.name;
+            expenseBySelect.appendChild(opt);
+          });
+
+          userCheckboxList.innerHTML = "";
+          allUsersData.forEach((u) => {
+            const label = document.createElement("label");
+            label.className =
+              "share-user-label flex items-center justify-between gap-3 px-3 py-2 rounded-md hover:bg-indigo-50 cursor-pointer text-gray-700 text-sm";
+            label.innerHTML = `
+              <div class="flex items-center gap-3">
+                <input type="checkbox" value="${u.id}" data-name="${escapeHtml(u.name)}" data-auto-locked-payer="false" onchange="updateSelectionAndPreview()" class="share-user-checkbox w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 disabled:opacity-75 disabled:cursor-not-allowed">
+                <span>${escapeHtml(u.name)} <span class="text-xs text-gray-400">(${escapeHtml(u.email)})</span></span>
+              </div>
+              <span class="role-badge hidden text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700"></span>
+            `;
+            userCheckboxList.appendChild(label);
+          });
+
+          syncMandatoryShareUsers();
+        } catch (err) {
+          if (!isLoggingOut) console.error("Error loading users:", err);
+        }
+      }
+
+      function handleExpenseByChange() {
+        syncMandatoryShareUsers();
+      }
+
+      // Creator ane Payer hamesha Share With ma locked rehva joye
+      function syncMandatoryShareUsers() {
+        const creatorId =
+          editingExpenseId && currentDetailExpense
+            ? Number(currentDetailExpense.createdById)
+            : Number(currentUserId);
+
+        const payerVal = document.getElementById("expenseBy").value;
+        const payerId = payerVal ? Number(payerVal) : null;
+
+        document.querySelectorAll(".share-user-checkbox").forEach((cb) => {
+          const uid = Number(cb.value);
+          const label = cb.closest(".share-user-label");
+          const badge = label ? label.querySelector(".role-badge") : null;
+
+          const isCreator = creatorId && uid === creatorId;
+          const isPayer = payerId && uid === payerId;
+
+          if (isCreator || isPayer) {
+            if (!cb.checked && isPayer && !isCreator) {
+              cb.dataset.autoLockedPayer = "true";
+            }
+            cb.checked = true;
+            cb.disabled = true;
+
+            if (label) {
+              label.classList.add("bg-indigo-50/60", "cursor-not-allowed");
+              label.classList.remove("hover:bg-indigo-50", "cursor-pointer");
+            }
+            if (badge) {
+              badge.classList.remove("hidden");
+              if (isCreator && isPayer) badge.textContent = "You (Creator & Paid)";
+              else if (isCreator) badge.textContent = "Creator (Locked)";
+              else badge.textContent = "Paid (Locked)";
+            }
+          } else {
+            if (cb.dataset.autoLockedPayer === "true") {
+              cb.checked = false;
+              cb.dataset.autoLockedPayer = "false";
+            }
+            cb.disabled = false;
+
+            if (label) {
+              label.classList.remove("bg-indigo-50/60", "cursor-not-allowed");
+              label.classList.add("hover:bg-indigo-50", "cursor-pointer");
+            }
+            if (badge) {
+              badge.classList.add("hidden");
+              badge.textContent = "";
+            }
+          }
+        });
+
+        updateSelectionAndPreview();
+      }
+
+      function updateSelectionAndPreview() {
+        const checkedBoxes = Array.from(
+          document.querySelectorAll(".share-user-checkbox:checked")
+        );
+        const selectedNames = checkedBoxes.map((cb) => cb.getAttribute("data-name"));
+        const count = checkedBoxes.length;
+        const amount = parseFloat(document.getElementById("amount").value) || 0;
+
+        const selectedUsersText = document.getElementById("selectedUsersText");
+        const splitPreviewBox = document.getElementById("splitPreviewBox");
+        const splitCountText = document.getElementById("splitCountText");
+        const perPersonAmount = document.getElementById("perPersonAmount");
+
+        if (count === 0) {
+          selectedUsersText.textContent = "Select members to share expense...";
+          selectedUsersText.className = "text-gray-400 truncate text-sm";
+        } else {
+          selectedUsersText.textContent = selectedNames.join(", ");
+          selectedUsersText.className = "text-gray-800 font-medium truncate text-sm";
+        }
+
+        if (count > 0 && amount > 0) {
+          const splitAmt = (amount / count).toFixed(2);
+          splitPreviewBox.classList.remove("hidden");
+          splitPreviewBox.classList.add("flex");
+          splitCountText.textContent =
+            "(Shared among " + count + " " + (count === 1 ? "person" : "people") + ")";
+          perPersonAmount.textContent = "₹" + splitAmt + " / person";
+        } else {
+          splitPreviewBox.classList.add("hidden");
+          splitPreviewBox.classList.remove("flex");
+        }
+      }
+
+      // ================= EXPENSE DETAIL =================
+      function showDetailLoader() {
+        document.getElementById("welcomeView").classList.add("hidden");
+        document.getElementById("addExpenseFormView").classList.add("hidden");
+        document.getElementById("expenseDetailView").classList.remove("hidden");
+        document.getElementById("detailLoader").classList.remove("hidden");
+        document.getElementById("detailLoader").classList.add("flex");
+        document.getElementById("detailContent").classList.add("hidden");
+        hideLogs();
+      }
+
+      function hideDetailLoader() {
+        document.getElementById("detailLoader").classList.add("hidden");
+        document.getElementById("detailLoader").classList.remove("flex");
+        document.getElementById("detailContent").classList.remove("hidden");
+      }
+
+      // Server UTC time -> user's local time
+      function parseServerDate(raw) {
+        if (!raw) return null;
+        let s = String(raw).trim().replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
+        if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += "Z";
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+      }
+
+      function formatCreatedAt(raw) {
+        if (!raw) return "";
+        const d = parseServerDate(raw);
+        if (!d) return String(raw).slice(0, 16);
+        const p = (n) => String(n).padStart(2, "0");
+        return (
+          d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+          " " + p(d.getHours()) + ":" + p(d.getMinutes())
+        );
+      }
+
+      function formatLogTime(raw) {
+        const d = parseServerDate(raw);
+        if (!d) return formatCreatedAt(raw);
+        return d.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        });
+      }
+
+      // ================= LOGS =================
+      const LOG_THEMES = [
+        { chip: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-600" },
+        { chip: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-600" },
+        { chip: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+        { chip: "bg-rose-50 text-rose-700", dot: "bg-rose-500" },
+        { chip: "bg-sky-50 text-sky-700", dot: "bg-sky-600" },
+        { chip: "bg-purple-50 text-purple-700", dot: "bg-purple-600" },
+      ];
+
+      function hideLogs() {
+        const card = document.getElementById("logsCard");
+        if (card) card.classList.add("hidden");
+      }
+
+      const SVG_PLUS =
+        '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>';
+      const SVG_PENCIL =
+        '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>';
+
+      // ---- Logs ----
+      function numFromText(v) {
+        const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, ""));
+        return isNaN(n) ? null : n;
+      }
+
+      function logLi(dotClass, html) {
+        return (
+          '<li class="flex items-start gap-2.5 text-sm text-gray-600">' +
+          '<span class="mt-2.5 w-1.5 h-1.5 rounded-full shrink-0 ' + dotClass + '"></span>' +
+          '<div class="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 leading-6">' + html + "</div></li>"
+        );
+      }
+
+      // One change -> one line:   Title: old ➔ new
+      function renderChangeItems(c) {
+        const label = '<span class="font-semibold text-gray-800">' + escapeHtml(c.field) + ":</span>";
+
+        // Shared members:  Shared With: + Priya  - Rutvik
+        if (Array.isArray(c.added) || Array.isArray(c.removed)) {
+          const chips = [];
+          (c.added || []).forEach((n) =>
+            chips.push('<span class="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold">+ ' + escapeHtml(n) + "</span>")
+          );
+          (c.removed || []).forEach((n) =>
+            chips.push('<span class="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs font-semibold">&minus; ' + escapeHtml(n) + "</span>")
+          );
+          return [logLi("bg-amber-400", label + chips.join(""))];
+        }
+
+        // Before ➔ After
+        if (c.from !== undefined && c.from !== null) {
+          let delta = "";
+          if (/^amount$/i.test(c.field)) {
+            const a = numFromText(c.from), b = numFromText(c.to);
+            if (a !== null && b !== null && a !== b) {
+              const d = b - a;
+              delta =
+                '<span class="text-xs font-semibold px-2 py-0.5 rounded-full ' +
+                (d > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700") + '">' +
+                (d > 0 ? "+" : "-") + "₹" + Math.abs(d).toLocaleString("en-IN", { maximumFractionDigits: 2 }) +
+                "</span>";
+            }
+          }
+          return [
+            logLi(
+              "bg-amber-400",
+              label +
+                '<span class="px-1.5 py-0.5 rounded bg-red-50 text-red-600 line-through">' + escapeHtml(c.from) + "</span>" +
+                '<span class="text-gray-300">&#10142;</span>' +
+                '<span class="px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-medium">' + escapeHtml(c.to) + "</span>" +
+                delta
+            ),
+          ];
+        }
+        return [];
+      }
+
+      function showLogsLoader() {
+        const card = document.getElementById("logsCard");
+        const list = document.getElementById("logsList");
+        const loader = document.getElementById("logsLoader");
+        if (!card) return;
+        card.classList.remove("hidden");
+        if (list) list.innerHTML = "";
+        if (loader) {
+          loader.classList.remove("hidden");
+          loader.classList.add("flex");
+        }
+      }
+
+      function hideLogsLoader() {
+        const loader = document.getElementById("logsLoader");
+        if (!loader) return;
+        loader.classList.add("hidden");
+        loader.classList.remove("flex");
+      }
+
+      function renderLogs(exp) {
+        const card = document.getElementById("logsCard");
+        const list = document.getElementById("logsList");
+        card.classList.remove("hidden");
+        hideLogsLoader();
+
+        // Logs na hoy to pan 1st log "Created by <creator>" hamesha dekhay
+        const logs = Array.isArray(exp.logs) ? exp.logs.slice() : [];
+        if (!logs.some((l) => l.action === "created")) {
+          logs.unshift({
+            action: "created",
+            userId: exp.createdById,
+            userName: exp.createdByName,
+            createdAt: exp.createdAt,
+            changes: [],
+          });
+        }
+
+        const errorBanner = exp.logError
+          ? '<div class="mb-4 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs p-3 break-words">' +
+            "<b>Logs could not be loaded:</b> " + escapeHtml(exp.logError) + "</div>"
+          : "";
+
+        const items = logs
+          .map((log, i) => {
+            const isLast = i === logs.length - 1;
+            const isCreate = log.action === "created";
+            const theme = LOG_THEMES[Math.abs(Number(log.userId) || 0) % LOG_THEMES.length];
+            const name = log.userName || "Unknown";
+            const initial = escapeHtml(name.trim().charAt(0).toUpperCase() || "?");
+            const time = escapeHtml(formatLogTime(log.createdAt));
+            const changes = Array.isArray(log.changes) ? log.changes : [];
+
+            const railColor = isCreate ? "bg-green-500" : "bg-amber-500";
+            const tag = isCreate
+              ? '<span class="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Created by</span>'
+              : '<span class="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Edited by</span>';
+
+            // Created = header only. Edited = list of what was changed.
+            let body = "";
+            if (!isCreate) {
+              const lines = changes.flatMap(renderChangeItems);
+              body = lines.length
+                ? '<ul class="space-y-2 pt-3 border-t border-gray-200/70">' + lines.join("") + "</ul>"
+                : '<p class="text-xs text-gray-400 pt-3 border-t border-gray-200/70">' +
+                  (log.legacy
+                    ? "This edit was made before activity tracking was added, so its details are not available."
+                    : "No field changes were recorded for this edit.") +
+                  "</p>";
+            }
+
+            return (
+              '<div class="relative pl-10' + (isLast ? "" : " pb-5") + '">' +
+              (isLast ? "" : '<div class="absolute w-0.5 bg-gray-200 rounded-full" style="left:11px;top:38px;bottom:-14px"></div>') +
+              '<div class="absolute left-0 w-6 h-6 rounded-full text-white flex items-center justify-center ring-4 ring-white ' + railColor + '" style="top:14px">' +
+              (isCreate ? SVG_PLUS : SVG_PENCIL) + "</div>" +
+              '<div class="bg-gray-50 rounded-2xl px-5 py-3.5">' +
+              '<div class="flex flex-wrap items-center justify-between gap-2' + (body ? " mb-3" : "") + '">' +
+              '<div class="flex items-center gap-2 flex-wrap">' + tag +
+              '<span class="inline-flex items-center gap-1.5 pl-1 pr-3 py-1 rounded-full text-sm font-semibold ' + theme.chip + '">' +
+              '<span class="w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center ' + theme.dot + '">' + initial + "</span>" +
+              escapeHtml(name) + "</span></div>" +
+              '<span class="text-xs text-gray-500">' + time + "</span></div>" +
+              body + "</div></div>"
+            );
+          })
+          .join("");
+
+        list.innerHTML = errorBanner + items;
+      }
+
+      function renderExpenseDetail(exp) {
+        currentDetailExpense = exp;
+        document.getElementById("welcomeView").classList.add("hidden");
+        document.getElementById("addExpenseFormView").classList.add("hidden");
+        document.getElementById("expenseDetailView").classList.remove("hidden");
+        hideDetailLoader();
+
+        document.getElementById("detailTitle").innerText = exp.title || "-";
+        document.getElementById("detailCategory").innerText = exp.categoryName || "Unknown";
+        document.getElementById("detailAmount").innerText = "₹" + (exp.amount ?? 0);
+
+        const shareCount = exp.shares ? exp.shares.length : 0;
+        const perPerson =
+          shareCount > 0 ? (exp.amount / shareCount).toFixed(2) : exp.amount ?? 0;
+        document.getElementById("detailPerPerson").innerText = "₹" + perPerson;
+
+        const statusEl = document.getElementById("detailStatus");
+        statusEl.innerText = exp.status || "Pending";
+        statusEl.className =
+          "font-semibold " + (exp.status === "Completed" ? "text-green-600" : "text-yellow-600");
+
+        document.getElementById("detailCreator").innerText =
+          exp.expenseByName || exp.createdByName || "-";
+        document.getElementById("detailDate").innerText = formatCreatedAt(exp.createdAt);
+
+        const createdByTag = document.getElementById("detailCreatedByTag");
+        if (exp.createdByName) {
+          createdByTag.textContent = "Created by " + exp.createdByName;
+          createdByTag.classList.remove("hidden");
+        } else {
+          createdByTag.textContent = "";
+          createdByTag.classList.add("hidden");
+        }
+
+        const editedByEl = document.getElementById("detailEditedBy");
+        const editedAtEl = document.getElementById("detailEditedAt");
+        if (exp.updatedById && exp.updatedByName) {
+          editedByEl.textContent = exp.updatedByName;
+          editedAtEl.textContent = formatCreatedAt(exp.updatedAt) || "-";
+        } else {
+          editedByEl.textContent = "-";
+          editedAtEl.textContent = "-";
+        }
+
+        const sharesContainer = document.getElementById("detailShares");
+        if (exp.shares && exp.shares.length > 0) {
+          sharesContainer.innerHTML = exp.shares
+            .map(
+              (name) =>
+                '<span class="px-3 py-1 bg-white border rounded-lg text-xs font-medium shadow-sm">' +
+                escapeHtml(name) +
+                "</span>"
+            )
+            .join("");
+        } else {
+          sharesContainer.innerHTML = '<span class="text-gray-400 text-sm">No shares</span>';
+        }
+
+        const deleteBtn = document.getElementById("detailDeleteBtn");
+        if (deleteBtn) {
+          const isCreator =
+            currentUserId &&
+            exp.createdById &&
+            Number(currentUserId) === Number(exp.createdById);
+          deleteBtn.classList.toggle("hidden", !isCreator);
+        }
+
+        renderLogs(exp);
+      }
+
+      async function showDetailView(expenseId) {
+        const cached = allExpensesData.find((e) => e.id === expenseId);
+        if (cached) {
+          renderExpenseDetail(cached);
+          // still refresh in background — show logs loader until fresh data
+          if (!fetchedDetailIds.has(expenseId)) showLogsLoader();
+        } else {
+          showDetailLoader();
+          showLogsLoader();
+        }
+
+        if (fetchedDetailIds.has(expenseId)) return;
+
+        try {
+          const res = await authFetch("/api/expenses/" + expenseId);
+          const data = await res.json();
+
+          if (!res.ok) {
+            if (!cached) {
+              hideDetailLoader();
+              document.getElementById("detailTitle").innerText = "Error";
+              document.getElementById("detailShares").innerHTML =
+                '<span class="text-red-500 text-sm">' +
+                escapeHtml(data.error || "Failed to load expense") +
+                "</span>";
+            }
+            return;
+          }
+
+          fetchedDetailIds.add(expenseId);
+
+          const idx = allExpensesData.findIndex((e) => e.id === data.id);
+          if (idx >= 0) allExpensesData[idx] = data;
+          else allExpensesData.unshift(data);
+
+          if (!document.getElementById("expenseDetailView").classList.contains("hidden")) {
+            renderExpenseDetail(data);
+          }
+        } catch (err) {
+          if (isLoggingOut) return;
+          console.error("Error fetching expense detail:", err);
+          if (!cached) {
+            hideDetailLoader();
+            document.getElementById("detailTitle").innerText = "Error";
+            document.getElementById("detailShares").innerHTML =
+              '<span class="text-red-500 text-sm">Network error while loading details</span>';
+          }
+        }
+      }
+
+      function startEditExpense() {
+        if (!currentDetailExpense || !currentDetailExpense.id) {
+          showAlert("Nothing selected", "Please select an expense to edit.", "info");
+          return;
+        }
+        const exp = currentDetailExpense;
+        editingExpenseId = Number(exp.id);
+
+        openExpenseFormForEdit();
+
+        document.querySelector("#addExpenseFormView h2").textContent = "Edit Expense";
+        document.getElementById("submitBtn").textContent = "Update";
+
+        document.getElementById("title").value = exp.title || "";
+        document.getElementById("amount").value = exp.amount ?? "";
+
+        const catSelect = document.getElementById("categorySelect");
+        if (exp.categoryId != null) catSelect.value = String(exp.categoryId);
+
+        const payerId = exp.expenseById ?? exp.createdById;
+        if (payerId != null) document.getElementById("expenseBy").value = String(payerId);
+
+        const shareIds = new Set((exp.shareUserIds || []).map(Number));
+        document.querySelectorAll(".share-user-checkbox").forEach((cb) => {
+          cb.dataset.autoLockedPayer = "false";
+          cb.checked = shareIds.has(parseInt(cb.value));
+        });
+
+        syncMandatoryShareUsers();
+      }
+
+      function deleteExpenseFromDetail() {
+        if (!currentDetailExpense) return;
+        if (!currentUserId || Number(currentUserId) !== Number(currentDetailExpense.createdById)) {
+          showAlert("Not allowed", "Only the person who created this expense can delete it.", "error");
+          return;
+        }
+        deleteExpense(currentDetailExpense.id);
+      }
+
+      // ================= EXPENSE LIST (search + status filter) =================
+      const SEARCH_DEBOUNCE_MS = 400;
+      let expenseSearch = "";
+      let expenseStatus = "All"; // All | Pending | Completed
+      let searchTimer = null;
+      let listAbort = null; // cancels the previous in-flight request
+      let listReqId = 0; // ignore responses from outdated requests
+
+      function updateStatusChips() {
+        document.querySelectorAll(".status-chip").forEach((btn) => {
+          const active = btn.dataset.status === expenseStatus;
+          btn.className =
+            "status-chip flex-1 text-xs font-medium py-1.5 rounded-lg border transition cursor-pointer " +
+            (active
+              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+              : "bg-white text-gray-600 border-gray-200 hover:bg-indigo-50");
+        });
+      }
+
+      function onSearchInput(value) {
+        expenseSearch = value;
+        document.getElementById("expenseSearchClear").classList.toggle("hidden", !value);
+        clearTimeout(searchTimer);
+        // wait until the user stops typing, then call the API once
+        searchTimer = setTimeout(fetchExpenses, SEARCH_DEBOUNCE_MS);
+      }
+
+      function onSearchKeydown(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          clearTimeout(searchTimer);
+          fetchExpenses();
+        } else if (e.key === "Escape" && expenseSearch) {
+          clearSearch();
+        }
+      }
+
+      function clearSearch() {
+        const input = document.getElementById("expenseSearch");
+        input.value = "";
+        expenseSearch = "";
+        document.getElementById("expenseSearchClear").classList.add("hidden");
+        clearTimeout(searchTimer);
+        fetchExpenses();
+        input.focus();
+      }
+
+      function setStatusFilter(status) {
+        if (expenseStatus === status) return;
+        expenseStatus = status;
+        updateStatusChips();
+        clearTimeout(searchTimer);
+        fetchExpenses();
+      }
+
+      function renderExpenseList(data) {
+        const sidebarList = document.getElementById("expenseSidebarList");
+        const q = expenseSearch.trim();
+        const filtered = q || expenseStatus !== "All";
+
+        document.getElementById("expenseCount").textContent =
+          data.length + (data.length === 1 ? " expense" : " expenses");
+
+        if (data.length === 0) {
+          sidebarList.innerHTML = filtered
+            ? '<div class="text-center py-10 px-3">' +
+              '<div class="text-3xl mb-2">&#128269;</div>' +
+              '<p class="text-gray-500 text-sm font-medium">No expenses match your filter</p>' +
+              '<p class="text-gray-400 text-xs mt-1">' +
+              (q ? 'Search: "' + escapeHtml(q) + '"' : "") +
+              (q && expenseStatus !== "All" ? " &middot; " : "") +
+              (expenseStatus !== "All" ? "Status: " + escapeHtml(expenseStatus) : "") +
+              "</p></div>"
+            : '<p class="text-gray-400 text-xs text-center py-4">No expenses found.</p>';
+          return;
+        }
+
+        sidebarList.innerHTML = data
+          .map(
+            (exp) => `
+            <div onclick="showDetailView(${Number(exp.id)}); closeSidebar();" class="p-3 bg-white border rounded-xl hover:bg-indigo-50/50 cursor-pointer transition shadow-sm group">
+              <div class="flex justify-between items-start">
+                <h4 class="font-bold text-gray-800 text-sm truncate w-40">${escapeHtml(exp.title)}</h4>
+                <span class="font-bold text-indigo-600 text-sm">₹${escapeHtml(exp.amount)}</span>
+              </div>
+              <div class="flex justify-between items-center mt-2">
+                <span class="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full truncate max-w-[140px]" title="${escapeHtml(exp.createdByName || "")}">
+                  ${exp.createdByName ? "Created by " + escapeHtml(exp.createdByName) : "Unknown"}
+                </span>
+                <span class="text-[10px] ${exp.status === "Completed" ? "text-green-600" : "text-yellow-600"} font-medium">${escapeHtml(exp.status)}</span>
+              </div>
+            </div>`
+          )
+          .join("");
+      }
+
+      function showExpenseListLoader() {
+        const sidebarList = document.getElementById("expenseSidebarList");
+        sidebarList.innerHTML =
+          '<div class="flex flex-col items-center justify-center py-12">' +
+          '<div class="w-9 h-9 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>' +
+          '<p class="mt-3 text-xs text-gray-500 font-medium">Loading expenses...</p>' +
+          "</div>";
+      }
+
+      async function fetchExpenses() {
+        const sidebarList = document.getElementById("expenseSidebarList");
+
+        if (listAbort) listAbort.abort(); // newer request wins
+        listAbort = new AbortController();
+        const myReq = ++listReqId;
+
+        const params = new URLSearchParams();
+        const q = expenseSearch.trim();
+        if (q) params.set("search", q);
+        if (expenseStatus !== "All") params.set("status", expenseStatus);
+        const qs = params.toString();
+
+        // Proper spinner while All / Pending / Completed or search loads
+        showExpenseListLoader();
+
+        try {
+          const res = await authFetch("/api/expenses" + (qs ? "?" + qs : ""), {
+            signal: listAbort.signal,
+          });
+          const data = await res.json();
+          if (myReq !== listReqId) return; // outdated response
+
+          if (!res.ok || !Array.isArray(data)) {
+            sidebarList.innerHTML =
+              '<p class="text-red-500 text-xs text-center py-4">' +
+              escapeHtml((data && data.error) || "Failed to load expenses") +
+              "</p>";
+            return;
+          }
+
+          allExpensesData = data;
+          renderExpenseList(data);
+        } catch (err) {
+          if (err && err.name === "AbortError") return; // replaced by a newer request
+          if (isLoggingOut) return;
+          console.error("Error fetching expenses:", err);
+          if (myReq === listReqId) {
+            sidebarList.innerHTML =
+              '<p class="text-red-500 text-xs text-center py-4">Error loading expenses.</p>';
+          }
+        }
+      }
+
+      // ================= ADD / UPDATE =================
+      async function submitExpense(e) {
+        e.preventDefault();
+        const formErrorMsg = document.getElementById("formErrorMsg");
+        formErrorMsg.textContent = "";
+
+        const expenseIdBeingEdited = editingExpenseId;
+        const isEdit = expenseIdBeingEdited != null && !isNaN(Number(expenseIdBeingEdited));
+
+        const title = document.getElementById("title").value.trim();
+        const amount = parseFloat(document.getElementById("amount").value);
+        const expenseById = document.getElementById("expenseBy").value;
+        const categorySelect = document.getElementById("categorySelect");
+
+        const submitBtn = document.getElementById("submitBtn");
+        const idleLabel = isEdit ? "Update" : "Submit";
+
+        if (!expenseById) {
+          formErrorMsg.textContent = "Please select 'Expense By' person!";
+          return;
+        }
+
+        const shareWithIds = Array.from(
+          document.querySelectorAll(".share-user-checkbox:checked")
+        ).map((cb) => parseInt(cb.value));
+
+        if (shareWithIds.length === 0) {
+          formErrorMsg.textContent = "Please select at least 1 person in 'Share With'!";
+          return;
+        }
+
+        // if (isEdit) {
+        //   const confirmed = await showDialog({
+        //     type: "edit",
+        //     title: "Update this expense?",
+        //     message: "Your changes will be saved and shown to everyone who shares this expense.",
+        //     confirmText: "Yes, Update",
+        //     cancelText: "Cancel",
+        //   });
+        //   if (!confirmed) return;
+        // }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
+
+        try {
+          // Category (existing ya new)
+          let categoryId = null;
+          const selectedValue = categorySelect.value;
+
+          if (selectedValue === "__add_new__" || categorySelect.classList.contains("hidden")) {
+            const newCatName = document.getElementById("customCategoryInput").value.trim();
+            if (!newCatName) {
+              formErrorMsg.textContent = "Please enter a new category name!";
+              return;
+            }
+            try {
+              categoryId = await createCategoryIfNeeded(newCatName);
+            } catch (err) {
+              if (isLoggingOut) return;
+              formErrorMsg.textContent = err.message;
+              return;
+            }
+          } else {
+            categoryId = parseInt(selectedValue);
+            if (!categoryId) {
+              formErrorMsg.textContent = "Please select a category!";
+              return;
+            }
+          }
+
+          const payload = {
+            title: title,
+            amount: amount,
+            categoryId: categoryId,
+            expenseById: parseInt(expenseById),
+            shareWithIds: shareWithIds,
+          };
+
+          const url = isEdit ? "/api/expenses/" + expenseIdBeingEdited : "/api/expenses";
+          const method = isEdit ? "PUT" : "POST";
+
+          const res = await authFetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+
+          if (res.ok) {
+            const msg = isEdit
+              ? data.noChanges
+                ? "No changes were made."
+                : "✓ Expense updated successfully!"
+              : "Expense added successfully!";
+
+            // Toast front par 2 sec animated — detail page background ma turat open
+            showToast(msg, 2000);
+
+            if (data.logError) {
+              showAlert("Expense saved, but log failed", String(data.logError), "error");
+            }
+            const newId = isEdit ? Number(expenseIdBeingEdited) : Number(data.expenseId);
+
+            editingExpenseId = null;
+            fetchedDetailIds.clear();
+            await fetchCategories();
+            await fetchExpenses();
+            resetExpenseForm();
+
+            // Navigate immediately; toast remains visible on top for 2s
+            if (newId) await showDetailView(newId);
+            else showWelcomeView();
+          } else {
+            formErrorMsg.textContent =
+              data.error || (isEdit ? "Failed to update expense!" : "Failed to add expense!");
+          }
+        } catch (err) {
+          if (isLoggingOut) return;
+          formErrorMsg.textContent = "Something went wrong!";
+          console.error(err);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = editingExpenseId ? "Update" : idleLabel;
+        }
+      }
+
+      async function deleteExpense(expenseId) {
+        const target = allExpensesData.find((e) => e.id === expenseId);
+        const name = target && target.title ? '"' + target.title + '"' : "this expense";
+        const ok = await showDialog({
+          type: "danger",
+          title: "Delete expense?",
+          message: "Are you sure you want to permanently delete " + name + "?\nThis action cannot be undone.",
+          confirmText: "Yes, Delete",
+          cancelText: "Cancel",
+        });
+        if (!ok) return;
+
+        try {
+          const res = await authFetch("/api/expenses/" + expenseId, { method: "DELETE" });
+          const data = await res.json();
+          if (res.ok) {
+            fetchedDetailIds.clear();
+            await fetchExpenses();
+            showWelcomeView();
+            showToast("✓ Expense deleted successfully!");
+          } else {
+            showAlert("Delete failed", data.error || "Unknown error", "error");
+          }
+        } catch (err) {
+          if (isLoggingOut) return;
+          showAlert("Network error", "Something went wrong while deleting. " + err.message, "error");
+        }
+      }
+
+      // ================= INIT =================
+      updateStatusChips();
+      fetchCategories();
+      fetchUsers();
+      fetchExpenses();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "SplitEase - Group Expense & Ledger Platform",
+  "description": "Modern full-stack group expense manager and audit ledger with role-based access control, real-time split calculations, interactive analytics, and audit logging.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,133 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider                    = "prisma-client-py"
+  enable_experimental_decimal = true
+}
+
+// ==========================================
+// 1. USER & AUTHENTICATION
+// ==========================================
+model User {
+  id                Int                  @id @default(autoincrement())
+  email             String               @unique
+  name              String
+  passwordHash      String
+  isActive          Boolean              @default(true)
+  upi_id            String?              @unique
+  profileImage      String?
+  resetOtp          String?              // Temporary 6-digit OTP for Forgot Password verification
+  resetOtpExpiry    DateTime?            // Expiry timestamp (valid for 10 minutes from generation)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  createdExpenses   Expense[]            @relation("UserCreatedExpenses")
+  paidExpenses      Expense[]            @relation("UserPaidExpenses")
+  participations    ExpenseParticipant[]
+  createdCategories Category[]           @relation("UserCreatedCategories")
+  auditLogs         ExpenseAuditLog[]
+
+  @@index([email])
+}
+
+// ==========================================
+// 2. PERSONAL CATEGORY MANAGEMENT
+// ==========================================
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  icon        String    @default("tag")
+  createdById Int?
+  createdBy   User?     @relation("UserCreatedCategories", fields: [createdById], references: [id], onDelete: SetNull)
+  expenses    Expense[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+}
+
+// ==========================================
+// 3. EXPENSE CORE & STATUS
+// ==========================================
+enum ExpenseStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model Expense {
+  id           Int                  @id @default(autoincrement())
+  title        String
+  description  String?
+  amount       Decimal              @db.Decimal(12, 2)
+  currency     String               @default("INR")
+  status       ExpenseStatus        @default(PENDING)
+  expenseDate  DateTime             @default(now())
+  images       String[]             @default([])
+
+  categoryId   Int
+  category     Category             @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  createdById  Int
+  createdBy    User                 @relation("UserCreatedExpenses", fields: [createdById], references: [id], onDelete: Restrict)
+  paidById     Int
+  paidBy       User                 @relation("UserPaidExpenses", fields: [paidById], references: [id], onDelete: Restrict)
+
+  participants ExpenseParticipant[]
+  auditLogs    ExpenseAuditLog[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([status])
+  @@index([expenseDate])
+  @@index([createdById])
+  @@index([paidById])
+  @@index([categoryId])
+}
+
+// ==========================================
+// 4. NORMALIZED EXPENSE PARTICIPANTS
+// ==========================================
+model ExpenseParticipant {
+  id          Int       @id @default(autoincrement())
+  expenseId   Int
+  expense     Expense   @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shareAmount Decimal   @db.Decimal(12, 2)
+  isSettled   Boolean   @default(false)
+  settledAt   DateTime?
+
+  @@unique([expenseId, userId])
+  @@index([userId])
+  @@index([expenseId])
+}
+
+// ==========================================
+// 5. IMMUTABLE AUDIT LOG & CHANGE TRACKING
+// ==========================================
+enum AuditAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  SETTLED
+  DELETED
+}
+
+model ExpenseAuditLog {
+  id        Int         @id @default(autoincrement())
+  expenseId Int
+  expense   Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  actorId   Int
+  actor     User        @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action    AuditAction
+  summary   String
+  diff      Json
+  createdAt DateTime    @default(now())
+
+  @@index([expenseId, createdAt])
+  @@index([actorId])
+}

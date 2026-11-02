@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Group Expense Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center min-h-screen">
+    
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
+        <div class="text-center mb-8">
+            <h2 class="text-3xl font-extrabold text-gray-800">Techy Traker</h2>
+            <p class="text-gray-500 text-sm mt-1">Group Expense Tracker</p>
+        </div>
+        
+        <form id="regForm" class="space-y-5">
+            <div>
+                <label class="block text-gray-700 font-semibold mb-2 text-sm">Full Name</label>
+                <input type="text" id="name" required placeholder="Full Name" 
+                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            
+            <div>
+                <label class="block text-gray-700 font-semibold mb-2 text-sm">Email Address</label>
+                <input type="email" id="email" required placeholder="name@example.com" 
+                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            
+            <div>
+                <label class="block text-gray-700 font-semibold mb-2 text-sm">Password</label>
+                <input type="password" id="password" required placeholder="••••••••" 
+                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            
+            <button type="submit" id="submitBtn" 
+                class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition duration-200 shadow-lg shadow-indigo-200">
+                Sign Up
+            </button>
+        </form>
+
+        <p id="msg" class="text-center text-sm mt-4 font-medium"></p>
+
+        <p class="text-center text-gray-600 text-sm mt-6">
+            Already have an account? <a href="/" class="text-indigo-600 font-bold hover:underline">Login here</a>
+        </p>
+    </div>
+
+    <script>
+        // Already logged in → dashboard (back loop prevent)
+        if (localStorage.getItem("jwt_token")) {
+            window.location.replace("/dashboard");
+        }
+
+        document.getElementById('regForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msgEl = document.getElementById('msg');
+            const btn = document.getElementById('submitBtn');
+
+            // Button disable karo loading vakhate
+            btn.disabled = true;
+            btn.innerText = "Registering...";
+
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    msgEl.className = "text-center text-sm mt-4 font-semibold text-green-600";
+                    msgEl.innerText = "Registration successful! Redirecting to login...";
+                    setTimeout(() => window.location.replace("/"), 1500);
+                } else {
+                    msgEl.className = "text-center text-sm mt-4 font-semibold text-red-600";
+                    msgEl.innerText = data.error || "Registration failed!";
+                    btn.disabled = false;
+                    btn.innerText = "Sign Up";
+                }
+            } catch (err) {
+                msgEl.className = "text-center text-sm mt-4 font-semibold text-red-600";
+                msgEl.innerText = "Server error. Try again later.";
+                btn.disabled = false;
+                btn.innerText = "Sign Up";
+            }
+        });
+    </script>
+</body>
+</html>
