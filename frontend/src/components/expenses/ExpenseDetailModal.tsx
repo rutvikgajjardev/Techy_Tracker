@@ -23,6 +23,7 @@ import { useExpense, useAppMutations } from '../../hooks/useApi';
 import { apiService } from '../../services/api';
 import { ImageViewerModal } from '../ui/ImageViewerModal';
 import { ExpenseSheetModal } from './ExpenseSheetModal';
+import { TechyTrackerLogo } from '../ui/TechyTrackerLogo';
 
 interface ExpenseDetailViewProps {
   expense: Expense | null;
@@ -215,13 +216,13 @@ export const ExpenseDetailView: React.FC<ExpenseDetailViewProps> = ({
               {/* User Avatar + "ram (You)" + "Needs to pay ₹138.75 to Mack" */}
               <div className="flex items-start sm:items-center gap-3.5 mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-indigo-600 text-white font-extrabold flex items-center justify-center text-lg shadow-md shrink-0 ring-2 ring-white dark:ring-slate-800">
-                  {currentParticipant.name.charAt(0).toUpperCase()}
+                  {(currentParticipant.name || 'User').charAt(0).toUpperCase()}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-base font-bold text-slate-900 dark:text-white">
-                      {currentParticipant.name}
+                      {currentParticipant.name || 'User'}
                     </span>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                       You
@@ -314,12 +315,22 @@ export const ExpenseDetailView: React.FC<ExpenseDetailViewProps> = ({
                   {/* QR Code Card */}
                   {showQrCode && (
                     <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center gap-4 animate-in fade-in zoom-in-95 duration-150">
-                      <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-sm shrink-0">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=4&data=${encodeURIComponent(upiPayUrl || `upi://pay?pa=${targetUpiId}&pn=${expense.paidByName}`)}`}
-                          alt="UPI QR Code"
-                          className="w-28 h-28 sm:w-32 sm:h-32 object-contain"
-                        />
+                      <div className="p-2.5 rounded-2xl bg-white border border-slate-200 shadow-sm shrink-0 relative inline-block">
+                        <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=4&ecc=H&data=${encodeURIComponent(
+                              upiPayUrl || `upi://pay?pa=${targetUpiId}&pn=${expense.paidByName}`
+                            )}`}
+                            alt="UPI QR Code"
+                            className="w-full h-full object-contain select-none"
+                          />
+                          {/* Centered Professional Techy Tracker App Logo Overlay */}
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 p-0.5 shadow-md border-2 border-indigo-600 flex items-center justify-center ring-2 ring-white">
+                              <TechyTrackerLogo className="w-5 h-5" />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                       <div className="text-center sm:text-left space-y-1">
                         <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-center sm:justify-start gap-1.5">
@@ -468,11 +479,11 @@ export const ExpenseDetailView: React.FC<ExpenseDetailViewProps> = ({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold flex items-center justify-center text-[11px] shrink-0">
-                        {p.name.charAt(0).toUpperCase()}
+                        {(p.name || 'Member').charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-slate-800 dark:text-slate-200 font-medium truncate">
-                          {p.name} {isUser && <span className="text-slate-400 font-normal">(You)</span>}
+                          {p.name || 'Member'} {isUser && <span className="text-slate-400 font-normal">(You)</span>}
                         </div>
 
                         {/* For unpaid participants: Show 'Needs to pay (amount) to (payer)' */}

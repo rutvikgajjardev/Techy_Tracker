@@ -20,6 +20,7 @@ from backend.controllers.dashboard_controller import dashboard_bp
 from backend.controllers.expense_controller import expense_bp
 from backend.controllers.category_controller import category_bp
 from backend.controllers.settlement_controller import settlement_bp
+from backend.controllers.upload_controller import upload_bp
 
 # Configure Cloudinary from centralized Config
 cloudinary.config(
@@ -55,6 +56,7 @@ def create_app(config_class=Config):
     app.register_blueprint(expense_bp, url_prefix="/api/expenses")
     app.register_blueprint(category_bp, url_prefix="/api/categories")
     app.register_blueprint(settlement_bp, url_prefix="/api/settlements")
+    app.register_blueprint(upload_bp, url_prefix="/api/upload")
 
     # 4. Standard Global Error Handlers
     @app.errorhandler(400)
@@ -85,56 +87,6 @@ def create_app(config_class=Config):
     @app.route("/api/health", methods=["GET"])
     def health_check():
         return jsonify({"status": "healthy", "service": "SplitEase API", "version": "2.0.0"}), 200
-
-    @app.route("/api/upload", methods=["POST"])
-    def upload_images():
-        """
-        Handles single or multi-image upload to Cloudinary.
-        Accepts multipart/form-data with keys: 'images', 'image', or 'files'.
-        """
-        files = (
-            request.files.getlist("images")
-            or request.files.getlist("image")
-            or request.files.getlist("files")
-        )
-        if not files:
-            for fallback_key in ("image", "file", "images", "files"):
-                if fallback_key in request.files:
-                    f = request.files[fallback_key]
-                    if f and f.filename:
-                        files = [f]
-                        break
-
-        # Filter out empty entries
-        valid_files = [f for f in files if f and f.filename and f.filename.strip()]
-
-        if not valid_files:
-            return jsonify({"success": False, "error": "No valid image file(s) provided"}), 400
-
-        try:
-            uploaded = []
-            for f in valid_files:
-                res = cloudinary.uploader.upload(
-                    f,
-                    folder="splitease_bills",
-                    transformation=[{"quality": "auto", "fetch_format": "auto"}],
-                )
-                uploaded.append({
-                    "url": res.get("secure_url"),
-                    "public_id": res.get("public_id"),
-                    "filename": f.filename
-                })
-
-            return jsonify({
-                "success": True,
-                "message": f"Successfully uploaded {len(uploaded)} image(s)",
-                "url": uploaded[0]["url"] if uploaded else None,
-                "urls": [item["url"] for item in uploaded],
-                "images": uploaded
-            }), 200
-
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
 
     return app
 

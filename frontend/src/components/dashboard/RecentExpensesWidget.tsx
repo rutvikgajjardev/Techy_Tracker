@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, ChevronRight, CheckCircle2, Clock, Receipt } from 'lucide-react';
+import { ArrowRight, ChevronRight, CheckCircle2, Clock, Receipt, Tag, Plus } from 'lucide-react';
 import { Expense } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -7,12 +7,14 @@ interface RecentExpensesWidgetProps {
   expenses: Expense[];
   onViewAll: () => void;
   onSelectExpense: (expense: Expense) => void;
+  onOpenNewExpense?: () => void;
 }
 
 export const RecentExpensesWidget: React.FC<RecentExpensesWidgetProps> = ({
   expenses,
   onViewAll,
   onSelectExpense,
+  onOpenNewExpense,
 }) => {
   const { formatAmount } = useTheme();
 
@@ -46,6 +48,16 @@ export const RecentExpensesWidget: React.FC<RecentExpensesWidgetProps> = ({
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
               Try selecting a wider date range or add a new expense to see your recent activity.
             </p>
+            {onOpenNewExpense && (
+              <button
+                type="button"
+                onClick={onOpenNewExpense}
+                className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors shadow-2xs active:scale-[0.98] cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Record Your First Expense</span>
+              </button>
+            )}
           </div>
         ) : (
           expenses.map(exp => {
@@ -59,18 +71,18 @@ export const RecentExpensesWidget: React.FC<RecentExpensesWidgetProps> = ({
                 onClick={() => onSelectExpense(exp)}
                 className="py-3.5 px-1 sm:px-2 flex items-center justify-between gap-3 sm:gap-4 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer transition-colors group"
               >
-                {/* Left Side: Date Tile + Stacked Title, Category & Paid By */}
+                {/* Left Side: Signature Date Tile + Stacked Title, Category & Paid By */}
                 <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  <div className="w-11 h-11 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700 flex flex-col items-center justify-center shrink-0 text-center mt-0.5 sm:mt-0">
-                    <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400 leading-none">
+                  <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 flex flex-col items-center justify-center shrink-0 text-center select-none shadow-2xs group-hover:border-indigo-300 dark:group-hover:border-indigo-600/50 transition-colors mt-0.5 sm:mt-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 leading-none">
                       {month}
                     </span>
-                    <span className="text-xs font-bold font-mono text-slate-900 dark:text-white mt-0.5 leading-none tabular-nums">
+                    <span className="text-base font-extrabold font-mono text-slate-900 dark:text-white leading-tight mt-0.5 tabular-nums">
                       {day}
                     </span>
                   </div>
 
-                  {/* Stacked Title -> Category -> Paid by (Never overlaps right column) */}
+                  {/* Stacked Title -> Category with Tag -> Paid by */}
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-semibold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -86,9 +98,10 @@ export const RecentExpensesWidget: React.FC<RecentExpensesWidgetProps> = ({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 truncate">
-                      {exp.categoryName}
-                    </p>
+                    <div className="flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 truncate">
+                      <Tag className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span className="truncate">{exp.categoryName}</span>
+                    </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                       Paid by <span className="font-medium text-slate-700 dark:text-slate-300">{exp.paidByName}</span>
                     </p>

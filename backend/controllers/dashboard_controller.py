@@ -5,7 +5,8 @@ Provides user-specific aggregated metrics, KPI computations (INR), and chart dat
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, jsonify, request
 from backend.controllers.auth_controller import token_required
-from prisma import Prisma
+from backend.db import with_db
+from backend.controllers.expense_controller import serialize_expense
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -45,7 +46,8 @@ def _get_user_personal_share(exp, current_user_id: int):
 
 @dashboard_bp.route("/summary", methods=["GET"])
 @token_required
-def get_dashboard_summary(current_user_id):
+@with_db
+async def get_dashboard_summary(db, current_user_id):
     """
     Returns user-specific dashboard summary:
     - period: 'all_time' | 'this_year' | 'this_month' | 'this_week' | 'custom'
@@ -67,168 +69,140 @@ def get_dashboard_summary(current_user_id):
     date_filter = {}
 
     if period == "this_week":
-        start_date = now - timedelta(days=7)
+        # Monday 00:00:00 UTC of current week
+        start_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         date_filter = {"gte": start_date}
     elif period == "this_month":
-        start_date = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+        start_date = datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=timezone.utc)
         date_filter = {"gte": start_date}
     elif period == "this_year":
-        start_date = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+        start_date = datetime(now.year, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         date_filter = {"gte": start_date}
-    elif period == "custom" and start_date_str and end_date_str:
-        try:
-            start_date = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
-            end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-            date_filter = {"gte": start_date, "lte": end_date}
-        except ValueError:
-            return jsonify({"error": "Invalid custom date format. Use ISO 8601 string."}), 400
+    elif period == "custom":
+        custom_filter = {}
+        if start_date_str:
+            try:
+                s_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                if s_dt.tzinfo is None:
+                    s_dt = s_dt.replace(tzinfo=timezone.utc)
+                custom_filter["gte"] = s_dt
+            except ValueError:
+                pass
+        if end_date_str:
+            try:
+                e_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                if e_dt.tzinfo is None:
+                    e_dt = e_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                else:
+                    e_dt = e_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                custom_filter["lte"] = e_dt
+            except ValueError:
+                pass
+        if custom_filter:
+            date_filter = custom_filter
 
-    async def fetch_metrics():
-        db = Prisma()
-        await db.connect()
-        try:
-            where_clause = {
-                "OR": [
-                    {"paidById": current_user_id},
-                    {"createdById": current_user_id},
-                    {"participants": {"some": {"userId": current_user_id}}}
-                ]
-            }
-            if date_filter:
-                where_clause["expenseDate"] = date_filter
+    where_clause = {
+        "OR": [
+            {"paidById": current_user_id},
+            {"createdById": current_user_id},
+            {"participants": {"some": {"userId": current_user_id}}}
+        ]
+    }
+    if date_filter:
+        where_clause["expenseDate"] = date_filter
 
-            expenses = await db.expense.find_many(
-                where=where_clause,
-                include={
-                    "category": True,
-                    "paidBy": True,
-                    "createdBy": True,
-                    "participants": {"include": {"user": True}}
-                },
-                order={"expenseDate": "desc"}
-            )
+    expenses = await db.expense.find_many(
+        where=where_clause,
+        include={
+            "category": True,
+            "paidBy": True,
+            "createdBy": True,
+            "participants": {"include": {"user": True}}
+        },
+        order={"expenseDate": "desc"}
+    )
 
-            # 1. Compute User-Specific KPIs & Category Breakdown
-            total_personal_expense = 0.0
-            user_transaction_count = 0
-            shared_to_pay = 0.0
-            amount_owed_to_me = 0.0
-            category_totals = {}
-            user_involved_expenses = []
+    # 1. Compute User-Specific KPIs & Category Breakdown
+    total_personal_expense = 0.0
+    user_transaction_count = 0
+    shared_to_pay = 0.0
+    amount_owed_to_me = 0.0
+    category_totals = {}
+    user_involved_expenses = []
 
-            for exp in expenses:
-                personal_share, is_involved = _get_user_personal_share(exp, current_user_id)
+    for exp in expenses:
+        personal_share, is_involved = _get_user_personal_share(exp, current_user_id)
 
-                if is_involved:
-                    total_personal_expense += personal_share
-                    user_transaction_count += 1
-                    user_involved_expenses.append(exp)
+        if is_involved:
+            total_personal_expense += personal_share
+            user_transaction_count += 1
+            user_involved_expenses.append(exp)
 
-                    cat_id = exp.categoryId
-                    cat_name = exp.category.name if exp.category else "General"
-                    if cat_id not in category_totals:
-                        category_totals[cat_id] = {"id": cat_id, "name": cat_name, "value": 0.0, "count": 0}
-                    category_totals[cat_id]["value"] += personal_share
-                    category_totals[cat_id]["count"] += 1
-                elif exp.paidById == current_user_id or exp.createdById == current_user_id:
-                    user_involved_expenses.append(exp)
+            cat_id = exp.categoryId
+            cat_name = exp.category.name if exp.category else "General"
+            if cat_id not in category_totals:
+                category_totals[cat_id] = {"id": cat_id, "name": cat_name, "value": 0.0, "count": 0}
+            category_totals[cat_id]["value"] += personal_share
+            category_totals[cat_id]["count"] += 1
+        elif exp.paidById == current_user_id or exp.createdById == current_user_id:
+            user_involved_expenses.append(exp)
 
-                # Pending settlement calculations
-                if exp.status != "COMPLETED":
-                    for part in exp.participants:
-                        if part.userId == current_user_id and exp.paidById != current_user_id and not part.isSettled:
-                            shared_to_pay += float(part.shareAmount)
-                        elif exp.paidById == current_user_id and part.userId != current_user_id and not part.isSettled:
-                            amount_owed_to_me += float(part.shareAmount)
+        # Pending settlement calculations
+        if exp.status != "COMPLETED":
+            for part in exp.participants:
+                if part.userId == current_user_id and exp.paidById != current_user_id and not part.isSettled:
+                    shared_to_pay += float(part.shareAmount)
+                elif exp.paidById == current_user_id and part.userId != current_user_id and not part.isSettled:
+                    amount_owed_to_me += float(part.shareAmount)
 
-            sorted_cats = sorted(list(category_totals.values()), key=lambda x: x["value"], reverse=True)
-            category_chart_data = [
-                {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "value": round(item["value"], 2),
-                    "color": CHART_PALETTE[idx % len(CHART_PALETTE)],
-                    "count": item["count"],
-                }
-                for idx, item in enumerate(sorted_cats)
-            ]
+    sorted_cats = sorted(list(category_totals.values()), key=lambda x: x["value"], reverse=True)
+    category_chart_data = [
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "value": round(item["value"], 2),
+            "color": CHART_PALETTE[idx % len(CHART_PALETTE)],
+            "count": item["count"],
+        }
+        for idx, item in enumerate(sorted_cats)
+    ]
 
-            # 3. Spending Trends: Per-Expense Bars (individual bar per transaction)
-            trend_chart_data = []
-            for exp in reversed(expenses):
-                personal_share, is_involved = _get_user_personal_share(exp, current_user_id)
-                if not is_involved or personal_share <= 0:
-                    continue
+    # 3. Spending Trends: Per-Expense Bars (individual bar per transaction)
+    trend_chart_data = []
+    for exp in reversed(expenses):
+        personal_share, is_involved = _get_user_personal_share(exp, current_user_id)
+        if not is_involved or personal_share <= 0:
+            continue
 
-                exp_dt = exp.createdAt if (exp.expenseDate.hour == 0 and exp.expenseDate.minute == 0 and getattr(exp, "createdAt", None)) else exp.expenseDate
-                time_str = exp_dt.strftime("%I:%M %p").lstrip("0")
+        exp_dt = exp.createdAt if (exp.expenseDate.hour == 0 and exp.expenseDate.minute == 0 and getattr(exp, "createdAt", None)) else exp.expenseDate
+        time_str = exp_dt.strftime("%I:%M %p").lstrip("0")
+        day_str = exp.expenseDate.strftime("%d %b")
 
-                trend_chart_data.append({
-                    "id": exp.id,
-                    "title": exp.title,
-                    "category": exp.category.name if exp.category else "General",
-                    "amount": round(personal_share, 2),
-                    "totalAmount": float(exp.amount),
-                    "date": exp.expenseDate.strftime("%d %b"),
-                    "time": time_str,
-                    "rawDate": exp.expenseDate.isoformat()
-                })
+        trend_chart_data.append({
+            "id": exp.id,
+            "title": exp.title,
+            "category": exp.category.name if exp.category else "General",
+            "date": day_str,
+            "time": time_str,
+            "totalAmount": float(exp.amount),
+            "amount": round(personal_share, 2),
+            "rawDate": exp.expenseDate.isoformat(),
+        })
 
-            # 4. Recent Expenses (top 5 involving the logged-in user)
-            recent_expenses = []
-            for exp in user_involved_expenses[:5]:
-                recent_expenses.append({
-                    "id": exp.id,
-                    "title": exp.title,
-                    "description": exp.description,
-                    "amount": float(exp.amount),
-                    "currency": "INR",
-                    "status": exp.status,
-                    "expenseDate": exp.expenseDate.isoformat(),
-                    "createdAt": exp.createdAt.isoformat() if getattr(exp, "createdAt", None) else exp.expenseDate.isoformat(),
-                    "updatedAt": exp.updatedAt.isoformat() if getattr(exp, "updatedAt", None) else exp.expenseDate.isoformat(),
-                    "categoryId": exp.categoryId,
-                    "categoryName": exp.category.name if exp.category else "General",
-                    "paidByName": exp.paidBy.name if getattr(exp, "paidBy", None) else "Unknown",
-                    "paidById": exp.paidById,
-                    "paidByUpiId": getattr(exp.paidBy, "upi_id", None) if getattr(exp, "paidBy", None) else None,
-                    "createdById": exp.createdById,
-                    "createdByName": exp.createdBy.name if getattr(exp, "createdBy", None) else "Unknown",
-                    "images": getattr(exp, "images", []) or [],
-                    "participants": [
-                        {
-                            "userId": p.userId,
-                            "name": p.user.name if p.user else f"User #{p.userId}",
-                            "upi_id": getattr(p.user, "upi_id", None) if getattr(p, "user", None) else None,
-                            "shareAmount": float(p.shareAmount),
-                            "isSettled": (p.userId == exp.paidById) or bool(p.isSettled) or exp.status == "COMPLETED",
-                            "settledAt": p.settledAt.isoformat() if getattr(p, "settledAt", None) else None,
-                            "owesToUserId": None if (p.userId == exp.paidById or bool(p.isSettled)) else exp.paidById,
-                            "owesToName": None if (p.userId == exp.paidById or bool(p.isSettled)) else (exp.paidBy.name if getattr(exp, "paidBy", None) else None),
-                            "owesToUpiId": None if (p.userId == exp.paidById or bool(p.isSettled)) else (getattr(exp.paidBy, "upi_id", None) if getattr(exp, "paidBy", None) else None),
-                        }
-                        for p in (exp.participants or [])
-                    ],
-                })
+    # 4. Recent Expenses (User-Involved only, limit 5, serialized with complete fields)
+    recent_expenses = [serialize_expense(exp) for exp in user_involved_expenses[:5]]
 
-            return {
-                "success": True,
-                "period": period,
-                "kpis": {
-                    "totalExpenses": round(total_personal_expense, 2),
-                    "sharedExpensesToPay": round(shared_to_pay, 2),
-                    "amountOwedToMe": round(amount_owed_to_me, 2),
-                    "netBalance": round(amount_owed_to_me - shared_to_pay, 2),
-                    "totalCount": user_transaction_count
-                },
-                "categoryBreakdown": category_chart_data,
-                "spendingTrends": trend_chart_data,
-                "recentExpenses": recent_expenses
-            }
-        finally:
-            if db.is_connected():
-                await db.disconnect()
-
-    import asyncio
-    result = asyncio.run(fetch_metrics())
-    return jsonify(result), 200
+    return jsonify({
+        "success": True,
+        "period": period,
+        "kpis": {
+            "totalExpenses": round(total_personal_expense, 2),
+            "sharedExpensesToPay": round(shared_to_pay, 2),
+            "amountOwedToMe": round(amount_owed_to_me, 2),
+            "netBalance": round(amount_owed_to_me - shared_to_pay, 2),
+            "totalCount": user_transaction_count
+        },
+        "categoryBreakdown": category_chart_data,
+        "spendingTrends": trend_chart_data,
+        "recentExpenses": recent_expenses
+    }), 200

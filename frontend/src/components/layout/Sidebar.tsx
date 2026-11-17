@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Loader2,
   CreditCard,
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -37,6 +38,7 @@ interface SidebarProps {
   onRequestLogout: () => void;
   onOpenProfile?: () => void;
   onOpenChangePassword?: () => void;
+  onOpenUpiSettings?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,46 +49,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRequestLogout,
   onOpenProfile,
   onOpenChangePassword,
+  onOpenUpiSettings,
 }) => {
-  const { currentUser, updateProfile } = useAuth();
+  const { currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [copiedUpi, setCopiedUpi] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const footerButtonRef = useRef<HTMLDivElement>(null);
-
-  // Inline UPI editing state
-  const [isEditingUpi, setIsEditingUpi] = useState(false);
-  const [upiInput, setUpiInput] = useState(currentUser?.upi_id || '');
-  const [isSavingUpi, setIsSavingUpi] = useState(false);
-  const [upiError, setUpiError] = useState('');
-
-  // Keep UPI input synced with currentUser
-  useEffect(() => {
-    setUpiInput(currentUser?.upi_id || '');
-    setIsEditingUpi(false);
-    setUpiError('');
-  }, [currentUser?.upi_id, isSettingsOpen]);
-
-  const handleSaveUpi = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUpiError('');
-    const cleaned = upiInput.trim();
-    if (cleaned && !cleaned.includes('@')) {
-      setUpiError('Enter a valid UPI ID (e.g. name@upi)');
-      return;
-    }
-    setIsSavingUpi(true);
-    try {
-      await updateProfile({ upi_id: cleaned || null });
-      setIsEditingUpi(false);
-    } catch (err: any) {
-      setUpiError(err.message || 'Failed to update UPI ID');
-    } finally {
-      setIsSavingUpi(false);
-    }
-  };
 
   // Close Settings Popover when clicking outside
   useEffect(() => {
@@ -261,7 +231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsSettingsOpen(prev => !prev)}
-                  title={`${currentUser.name || 'User'} • Click for Settings`}
+                  title={`${currentUser?.name || 'User'} • Click for Settings`}
                   aria-label="User settings & profile"
                   className={`w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white font-bold text-sm flex items-center justify-center shadow-sm transition-all cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:ring-offset-2 dark:ring-offset-slate-900 ${
                     isSettingsOpen
@@ -289,10 +259,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <div className="truncate min-w-0 flex-1">
                     <p className="text-xs font-semibold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                      {currentUser.name || 'User'}
+                      {currentUser?.name || 'User'}
                     </p>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-                      {currentUser.email || 'Logged In'}
+                      {currentUser?.email || 'Logged In'}
                     </p>
                   </div>
                 </div>
@@ -338,10 +308,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                     <div className="truncate min-w-0">
                       <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {currentUser.name}
+                        {currentUser?.name || 'User'}
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-mono">
-                        {currentUser.email}
+                        {currentUser?.email || ''}
                       </p>
                     </div>
                   </div>
@@ -357,121 +327,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 {/* Common UI Menu List */}
                 <div className="space-y-1.5">
-                  {/* Item 1: UPI ID with user-friendly inline edit form */}
-                  {isEditingUpi ? (
-                    <form
-                      onSubmit={handleSaveUpi}
-                      className="p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 space-y-2 transition-all animate-in fade-in duration-150"
-                    >
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                          Edit UPI ID
-                        </label>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">e.g. name@upi</span>
+                  {/* Item 1: UPI ID & Payment QR View */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      onOpenUpiSettings?.();
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-all flex items-center justify-between gap-2.5 cursor-pointer group text-left"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                        <QrCode className="w-4 h-4" />
                       </div>
-
-                      <input
-                        type="text"
-                        value={upiInput}
-                        onChange={e => {
-                          setUpiInput(e.target.value);
-                          if (upiError) setUpiError('');
-                        }}
-                        placeholder="yourname@okhdfcbank"
-                        autoFocus
-                        className="w-full px-2.5 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-
-                      {upiError && (
-                        <p className="text-[10px] font-medium text-rose-500 dark:text-rose-400 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3 shrink-0" />
-                          <span>{upiError}</span>
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingUpi(false);
-                            setUpiError('');
-                          }}
-                          disabled={isSavingUpi}
-                          className="px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={isSavingUpi}
-                          className="px-3 py-1 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                        >
-                          {isSavingUpi ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              <span>Saving...</span>
-                            </>
-                          ) : (
-                            <span>Save UPI</span>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="p-2 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-all flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                          <CreditCard className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 text-left">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                              UPI ID
-                            </p>
-                            {currentUser.upi_id && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Active UPI ID" />
-                            )}
-                          </div>
-                          <p
-                            className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate"
-                            title={currentUser.upi_id || 'Not configured'}
-                          >
-                            {currentUser.upi_id || 'Not configured'}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            My UPI & QR Code
                           </p>
+                          {currentUser?.upi_id && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Active UPI ID" />
+                          )}
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        {currentUser.upi_id && (
-                          <button
-                            type="button"
-                            onClick={handleCopyUpi}
-                            title={copiedUpi ? 'Copied!' : 'Copy UPI ID'}
-                            aria-label="Copy UPI ID"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                          >
-                            {copiedUpi ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUpiInput(currentUser.upi_id || '');
-                            setIsEditingUpi(true);
-                          }}
-                          title="Edit UPI ID"
-                          aria-label="Edit UPI ID"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                          {currentUser?.upi_id || 'Configure UPI & QR'}
+                        </p>
                       </div>
                     </div>
-                  )}
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-colors shrink-0" />
+                  </button>
 
                   {/* Item 2: Dark Theme Toggle */}
                   <div className="p-2 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition-all flex items-center justify-between gap-2">

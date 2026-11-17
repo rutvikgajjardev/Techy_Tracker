@@ -15,6 +15,8 @@ import {
   Receipt,
   ArrowLeft,
   X,
+  Tag,
+  Loader2,
 } from 'lucide-react';
 import { Expense, ExpenseFilters, Category } from '../types';
 import { useExpenses } from '../hooks/useApi';
@@ -23,6 +25,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { ExpenseForm } from '../components/expenses/ExpenseForm';
 import { DatePicker } from '../components/ui/DatePicker';
+import { CustomSelect, SelectOption } from '../components/ui/CustomSelect';
 import { ExpenseDetailView } from '../components/expenses/ExpenseDetailModal';
 
 interface ExpensesPageProps {
@@ -78,19 +81,21 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   const [search, setSearch] = useState('');
   // Debounce search input by 350ms to prevent high-frequency backend API calls on every keystroke
   const debouncedSearch = useDebounce(search, 350);
+  const debouncedCustomStart = useDebounce(customStart, 300);
+  const debouncedCustomEnd = useDebounce(customEnd, 300);
 
   // SWR Filters Query
   const filters: Partial<ExpenseFilters> = useMemo(
     () => ({
       status: statusTab,
       dateRange,
-      customStartDate: customStart || undefined,
-      customEndDate: customEnd || undefined,
+      customStartDate: debouncedCustomStart || undefined,
+      customEndDate: debouncedCustomEnd || undefined,
       paidByUserId,
       sortBy,
       search: debouncedSearch,
     }),
-    [statusTab, dateRange, customStart, customEnd, paidByUserId, sortBy, debouncedSearch]
+    [statusTab, dateRange, debouncedCustomStart, debouncedCustomEnd, paidByUserId, sortBy, debouncedSearch]
   );
 
   const hasActiveFilters = Boolean(
@@ -283,54 +288,45 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
           </div>
 
           {/* 2. Date Filter */}
-          <div className="relative">
-            <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <select
-              value={dateRange}
-              onChange={e => setDateRange(e.target.value as any)}
-              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="all">Date: All Time</option>
-              <option value="week">Date: Past Week</option>
-              <option value="month">Date: This Month</option>
-              <option value="year">Date: This Year</option>
-              <option value="custom">Date: Custom Range</option>
-            </select>
-          </div>
+          <CustomSelect
+            value={dateRange}
+            onChange={val => setDateRange(val)}
+            icon={<Calendar className="w-4 h-4" />}
+            options={[
+              { value: 'all', label: 'Date: All Time' },
+              { value: 'week', label: 'Date: Past Week' },
+              { value: 'month', label: 'Date: This Month' },
+              { value: 'year', label: 'Date: This Year' },
+              { value: 'custom', label: 'Date: Custom Range' },
+            ]}
+          />
 
           {/* 3. Paid By Filter */}
-          <div className="relative">
-            <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <select
-              value={paidByUserId}
-              onChange={e =>
-                setPaidByUserId(e.target.value === 'all' ? 'all' : Number(e.target.value))
-              }
-              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="all">Paid By: Anyone</option>
-              {registeredUsers.map(u => (
-                <option key={u.id} value={u.id}>
-                  Paid By: {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelect
+            value={paidByUserId}
+            onChange={val => setPaidByUserId(val === 'all' ? 'all' : Number(val))}
+            icon={<UserIcon className="w-4 h-4" />}
+            options={[
+              { value: 'all', label: 'Paid By: Anyone' },
+              ...registeredUsers.map(u => ({
+                value: u.id,
+                label: `Paid By: ${u.name}`,
+              })),
+            ]}
+          />
 
           {/* 4. Sort By */}
-          <div className="relative">
-            <ArrowUpDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value as any)}
-              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="newer">Sort: Newer to Older</option>
-              <option value="older">Sort: Older to Newer</option>
-              <option value="amount_high">Sort: Amount (High to Low)</option>
-              <option value="amount_low">Sort: Amount (Low to High)</option>
-            </select>
-          </div>
+          <CustomSelect
+            value={sortBy}
+            onChange={val => setSortBy(val)}
+            icon={<ArrowUpDown className="w-4 h-4" />}
+            options={[
+              { value: 'newer', label: 'Sort: Newer to Older' },
+              { value: 'older', label: 'Sort: Older to Newer' },
+              { value: 'amount_high', label: 'Sort: Amount (High to Low)' },
+              { value: 'amount_low', label: 'Sort: Amount (Low to High)' },
+            ]}
+          />
         </div>
 
         {/* Custom Date Pickers */}
@@ -380,35 +376,13 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
         </div>
       )}
 
-      {/* Spacious Expense List UI */}
-      {isLoading && !hasData ? (
-        <div className="space-y-4 animate-pulse" role="status" aria-label="Loading expenses">
-          {[1, 2, 3, 4].map(n => (
-            <div
-              key={n}
-              className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-            >
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="w-14 h-14 rounded-xl bg-slate-200 dark:bg-slate-700/70 shrink-0" />
-                <div className="space-y-2.5">
-                  <div className="w-24 h-4 rounded-full bg-slate-200 dark:bg-slate-700/70" />
-                  <div className="w-48 sm:w-64 h-5 rounded-md bg-slate-200 dark:bg-slate-700/70" />
-                  <div className="w-36 sm:w-48 h-3.5 rounded-md bg-slate-200 dark:bg-slate-700/70" />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between lg:justify-end gap-5 pt-3.5 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-slate-700/80 shrink-0">
-                <div className="space-y-2 text-right">
-                  <div className="w-24 h-6 rounded-md bg-slate-200 dark:bg-slate-700/70 ml-auto" />
-                  <div className="w-16 h-3.5 rounded-md bg-slate-200 dark:bg-slate-700/70 ml-auto" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-700/70" />
-                  <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-700/70" />
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Simple, Non-Disruptive Expense List UI with Background Persistence */}
+      {isLoading && expenses.length === 0 ? (
+        <div className="min-h-[260px] flex items-center justify-center py-16 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+            <span>Loading transactions...</span>
+          </div>
         </div>
       ) : expenses.length === 0 ? (
         <div className="space-y-4">
@@ -428,24 +402,32 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
             </div>
           )}
 
-          {/* Add Expense Action Card - Identical modern dashed card UI as Add Category */}
-          <div
-            onClick={onOpenNewExpense}
-            className="p-8 sm:p-12 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group min-h-[220px] shadow-2xs hover:shadow-md"
-          >
-            <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:scale-110 flex items-center justify-center shadow-2xs transition-all mb-3.5">
-              <Plus className="w-6 h-6" />
+          <div className="py-14 sm:py-16 text-center rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700/60 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <Receipt className="w-5 h-5 text-slate-400" />
             </div>
-            <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              Add New Expense
+            <h4 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200">
+              No transactions found
             </h4>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-sm leading-relaxed">
-              Record a transaction to track spending, split shares with friends, and attach bills
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-sm mx-auto">
+              {hasActiveFilters
+                ? 'No transactions match your current search or filter criteria.'
+                : 'No recorded expenses in this view yet.'}
             </p>
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 relative">
+          {/* Simple overlay loader on top of list when filtering/validating */}
+          {(isValidating || isSyncing) && (
+            <div className="absolute inset-0 z-20 flex items-start justify-center pt-16 bg-white/40 dark:bg-slate-900/40 rounded-2xl transition-opacity animate-in fade-in duration-150 pointer-events-none">
+              <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md text-xs font-semibold text-slate-800 dark:text-slate-200">
+                <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                <span>Loading transactions...</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
             <span>Showing {expenses.length} of {count} transactions</span>
             {isSyncing && (
@@ -505,8 +487,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
                               Just Added
                             </span>
                           )}
-                          <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                            {exp.categoryName}
+                          <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                            <Tag className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span>{exp.categoryName}</span>
                           </span>
                           <span className="text-slate-300 dark:text-slate-600">·</span>
                           <span

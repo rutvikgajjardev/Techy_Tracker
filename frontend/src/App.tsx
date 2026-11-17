@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { UpiSettingsPage } from './pages/UpiSettingsPage';
 import { AuthPage } from './pages/AuthPage';
 import { ConfirmDialog } from './components/ui/Dialog';
 import { ToastContainer, ToastMessage } from './components/ui/Toast';
@@ -50,6 +51,7 @@ const MainAppContent: React.FC = () => {
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isChangePasswordActive, setIsChangePasswordActive] = useState(false);
+  const [isUpiSettingsActive, setIsUpiSettingsActive] = useState(false);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -74,6 +76,7 @@ const MainAppContent: React.FC = () => {
       setIsExpenseFormOpen(false);
       setFormExpense(null);
       setIsChangePasswordActive(false);
+      setIsUpiSettingsActive(false);
       setSelectedExpense(null);
     }
   }, [isAuthenticated, currentUser?.id]);
@@ -166,55 +169,27 @@ const MainAppContent: React.FC = () => {
   const handleSaveExpense = async (data: any) => {
     try {
       if (formExpense) {
-        // Edit mode: transition back to Expenses view with dimmed loading filter
-        setIsExpenseFormOpen(false);
-        setFormExpense(null);
-        setIsSyncingExpense(true);
-        setSyncMessage(`Updating "${formExpense.title}"...`);
-
-        const minTimer = new Promise(resolve => setTimeout(resolve, 600));
-        const [updated] = await Promise.all([
-          apiService.updateExpense(formExpense.id, data, currentUser),
-          minTimer,
-        ]);
-
+        // Edit mode: await API update directly, then close form smoothly
+        const updated = await apiService.updateExpense(formExpense.id, data, currentUser);
         await updateExpenseInCache(updated);
-        addToast('success', `Expense "${updated.title}" updated and revision logged.`);
+        addToast('success', `Expense "${updated.title}" updated.`);
         if (selectedExpense?.id === updated.id) {
           setSelectedExpense(updated);
         }
-        await invalidateExpenses();
-        await invalidateCategories();
-
-        setIsSyncingExpense(false);
-        setSyncMessage('');
-      } else {
-        // Create mode:
-        // 1. Immediately switch back to Expenses screen with the dimmed loading filter active!
         setIsExpenseFormOpen(false);
         setFormExpense(null);
-        setIsSyncingExpense(true);
-        setSyncMessage(`Recording "${data.title || 'New Expense'}"...`);
-
-        // 2. Await both API creation and a minimum smooth transition duration (750ms)
-        const minTimer = new Promise(resolve => setTimeout(resolve, 750));
-        const [created] = await Promise.all([
-          apiService.createExpense(data, currentUser),
-          minTimer,
-        ]);
-
-        // 3. Inject new expense into SWR cache immediately so it's guaranteed to be there
+        await invalidateExpenses();
+        await invalidateCategories();
+      } else {
+        // Create mode: await API creation directly, then close form smoothly
+        const created = await apiService.createExpense(data, currentUser);
         await addExpenseToCache(created);
         setRecentCreatedId(created.id);
         addToast('success', `Expense "${created.title}" recorded successfully.`);
-
-        // 4. Invalidate related caches in background to align with database
+        setIsExpenseFormOpen(false);
+        setFormExpense(null);
         await invalidateExpenses();
         await invalidateCategories();
-
-        // 5. Lift the dimmed loading filter so user sees the new expense smoothly!
-        setIsSyncingExpense(false);
-        setSyncMessage('');
 
         // Clear highlight badge after 4.5 seconds
         setTimeout(() => {
@@ -222,10 +197,8 @@ const MainAppContent: React.FC = () => {
         }, 4500);
       }
     } catch (err: any) {
-      setIsSyncingExpense(false);
-      setSyncMessage('');
       addToast('error', err.message || 'Error saving expense.');
-      setIsExpenseFormOpen(true);
+      throw err;
     }
   };
 
@@ -251,6 +224,7 @@ const MainAppContent: React.FC = () => {
     setIsExpenseFormOpen(false);
     setFormExpense(null);
     setIsChangePasswordActive(false);
+    setIsUpiSettingsActive(false);
     setSelectedExpense(null);
     logout();
     addToast('info', 'You have been logged out of Techy Tracker.');
@@ -267,6 +241,7 @@ const MainAppContent: React.FC = () => {
         onSelectTab={tab => {
           setCurrentTab(tab);
           setIsChangePasswordActive(false);
+          setIsUpiSettingsActive(false);
           // Always land on the main screen of the selected tab, closing any in-progress expense form or detail view
           setIsExpenseFormOpen(false);
           setFormExpense(null);
@@ -276,7 +251,14 @@ const MainAppContent: React.FC = () => {
         onToggleCollapse={handleToggleSidebar}
         onRequestLogout={() => setIsLogoutDialogOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
-        onOpenChangePassword={() => setIsChangePasswordActive(true)}
+        onOpenChangePassword={() => {
+          setIsUpiSettingsActive(false);
+          setIsChangePasswordActive(true);
+        }}
+        onOpenUpiSettings={() => {
+          setIsChangePasswordActive(false);
+          setIsUpiSettingsActive(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -297,6 +279,11 @@ const MainAppContent: React.FC = () => {
               onBack={() => setIsChangePasswordActive(false)}
               onSuccessToast={msg => addToast('success', msg)}
             />
+          ) : isUpiSettingsActive ? (
+            <UpiSettingsPage
+              onBack={() => setIsUpiSettingsActive(false)}
+              onNotify={(type, msg) => addToast(type, msg)}
+            />
           ) : (
             <>
               {currentTab === 'dashboard' && (
@@ -309,6 +296,7 @@ const MainAppContent: React.FC = () => {
                   }}
                   onSelectExpense={handleOpenDetailView}
                   onNotify={(type, msg) => addToast(type, msg)}
+                  onOpenNewExpense={handleOpenNewExpense}
                 />
               )}
 

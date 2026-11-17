@@ -27,6 +27,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { DatePicker } from '../components/ui/DatePicker';
+import { CustomSelect } from '../components/ui/CustomSelect';
 
 const CATEGORY_PRESETS = [
   { name: 'Food & Dining', emoji: '🍔' },
@@ -84,6 +85,8 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
   const [sortBy, setSortBy] = useState<'newer' | 'older' | 'amount_high' | 'amount_low'>('newer');
   const [expenseSearch, setExpenseSearch] = useState('');
   const debouncedExpenseSearch = useDebounce(expenseSearch, 350);
+  const debouncedCustomStart = useDebounce(customStart, 300);
+  const debouncedCustomEnd = useDebounce(customEnd, 300);
 
   // In-Page Category Form State (Replaces popup modal)
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -103,8 +106,8 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
       status: statusTab,
       categoryId: activeCategory.id,
       dateRange,
-      customStartDate: customStart || undefined,
-      customEndDate: customEnd || undefined,
+      customStartDate: debouncedCustomStart || undefined,
+      customEndDate: debouncedCustomEnd || undefined,
       paidByUserId,
       sortBy,
       search: debouncedExpenseSearch,
@@ -113,16 +116,36 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
     activeCategory?.id,
     statusTab,
     dateRange,
-    customStart,
-    customEnd,
+    debouncedCustomStart,
+    debouncedCustomEnd,
     paidByUserId,
     sortBy,
     debouncedExpenseSearch,
   ]);
 
-  const { expenses: categoryExpenses, isLoading: loadingExpenses, mutateExpenses } = useExpenses(
-    activeCategory ? categoryFilters : undefined
-  );
+  const {
+    expenses: categoryExpenses,
+    isLoading: loadingExpenses,
+    isValidating: validatingExpenses,
+    mutateExpenses,
+  } = useExpenses(activeCategory ? categoryFilters : undefined);
+
+  // Check if current category data is actively loading or transitioning
+  const isCategoryDataLoading =
+    loadingExpenses ||
+    (Boolean(activeCategory) &&
+      ((validatingExpenses && categoryExpenses.length === 0) ||
+        categoryExpenses.some(e => e.categoryId !== activeCategory?.id)));
+
+  // Safeguard: only calculate totals and render items matching the active category ID
+  const filteredCategoryExpenses = useMemo(() => {
+    if (!activeCategory) return [];
+    return categoryExpenses.filter(e => e.categoryId === activeCategory.id);
+  }, [categoryExpenses, activeCategory?.id]);
+
+  const filteredTotal = useMemo(() => {
+    return filteredCategoryExpenses.reduce((sum, e) => sum + e.amount, 0);
+  }, [filteredCategoryExpenses]);
 
   // Keep active category details fresh from categories SWR cache
   useEffect(() => {
@@ -143,6 +166,24 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
     setSortBy('newer');
     setExpenseSearch('');
     setActiveCategory(cat);
+  };
+
+  const hasCategoryFilters = Boolean(
+    expenseSearch ||
+    dateRange !== 'all' ||
+    customStart ||
+    customEnd ||
+    paidByUserId !== 'all' ||
+    statusTab !== 'ALL'
+  );
+
+  const handleClearCategoryFilters = () => {
+    setExpenseSearch('');
+    setDateRange('all');
+    setCustomStart('');
+    setCustomEnd('');
+    setPaidByUserId('all');
+    setStatusTab('ALL');
   };
 
   const handleOpenAdd = () => {
@@ -410,10 +451,14 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
                 {activeCategory.name} Expenses
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Showing {categoryExpenses.length}{' '}
-                {categoryExpenses.length === 1 ? 'transaction' : 'transactions'} matching your filters
-              </p>
+              {isCategoryDataLoading && filteredCategoryExpenses.length === 0 ? (
+                <div className="h-4 w-44 bg-slate-200 dark:bg-slate-700/80 rounded-md animate-pulse mt-1.5" />
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Showing {filteredCategoryExpenses.length}{' '}
+                  {filteredCategoryExpenses.length === 1 ? 'transaction' : 'transactions'} matching your filters
+                </p>
+              )}
             </div>
           </div>
 
@@ -422,11 +467,18 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
               <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold block">
                 Filtered Total
               </span>
-              <span className="text-lg font-extrabold font-mono text-slate-900 dark:text-white tabular-nums">
-                {formatAmount(
-                  categoryExpenses.reduce((sum, e) => sum + e.amount, 0)
-                )}
-              </span>
+              {isCategoryDataLoading && filteredCategoryExpenses.length === 0 ? (
+                <div className="h-6 w-24 bg-slate-200 dark:bg-slate-700/80 rounded-md animate-pulse mt-1" />
+              ) : (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-lg font-extrabold font-mono text-slate-900 dark:text-white tabular-nums">
+                    {formatAmount(filteredTotal)}
+                  </span>
+                  {(isCategoryDataLoading || validatingExpenses) && filteredCategoryExpenses.length > 0 && (
+                    <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -478,54 +530,45 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
             </div>
 
             {/* 2. Date Filter */}
-            <div className="relative">
-              <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                value={dateRange}
-                onChange={e => setDateRange(e.target.value as any)}
-                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">Date: All Time</option>
-                <option value="week">Date: Past Week</option>
-                <option value="month">Date: This Month</option>
-                <option value="year">Date: This Year</option>
-                <option value="custom">Date: Custom Range</option>
-              </select>
-            </div>
+            <CustomSelect
+              value={dateRange}
+              onChange={val => setDateRange(val)}
+              icon={<Calendar className="w-4 h-4" />}
+              options={[
+                { value: 'all', label: 'Date: All Time' },
+                { value: 'week', label: 'Date: Past Week' },
+                { value: 'month', label: 'Date: This Month' },
+                { value: 'year', label: 'Date: This Year' },
+                { value: 'custom', label: 'Date: Custom Range' },
+              ]}
+            />
 
             {/* 3. Paid By Filter */}
-            <div className="relative">
-              <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                value={paidByUserId}
-                onChange={e =>
-                  setPaidByUserId(e.target.value === 'all' ? 'all' : Number(e.target.value))
-                }
-                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">Paid By: Anyone</option>
-                {registeredUsers.map(u => (
-                  <option key={u.id} value={u.id}>
-                    Paid By: {u.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect
+              value={paidByUserId}
+              onChange={val => setPaidByUserId(val === 'all' ? 'all' : Number(val))}
+              icon={<UserIcon className="w-4 h-4" />}
+              options={[
+                { value: 'all', label: 'Paid By: Anyone' },
+                ...registeredUsers.map(u => ({
+                  value: u.id,
+                  label: `Paid By: ${u.name}`,
+                })),
+              ]}
+            />
 
             {/* 4. Sort By */}
-            <div className="relative">
-              <ArrowUpDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as any)}
-                className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="newer">Sort: Newer to Older</option>
-                <option value="older">Sort: Older to Newer</option>
-                <option value="amount_high">Sort: Amount (High to Low)</option>
-                <option value="amount_low">Sort: Amount (Low to High)</option>
-              </select>
-            </div>
+            <CustomSelect
+              value={sortBy}
+              onChange={val => setSortBy(val)}
+              icon={<ArrowUpDown className="w-4 h-4" />}
+              options={[
+                { value: 'newer', label: 'Sort: Newer to Older' },
+                { value: 'older', label: 'Sort: Older to Newer' },
+                { value: 'amount_high', label: 'Sort: Amount (High to Low)' },
+                { value: 'amount_low', label: 'Sort: Amount (Low to High)' },
+              ]}
+            />
           </div>
 
           {/* Custom Date Pickers (Responsive Mobile Grid) */}
@@ -557,56 +600,58 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
           )}
         </div>
 
-        {/* Category Expenses List */}
-        {loadingExpenses ? (
-          <div className="space-y-4 animate-pulse" role="status" aria-label="Loading category expenses">
-            {[1, 2, 3, 4].map(n => (
-              <div
-                key={n}
-                className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-              >
-                <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="w-14 h-14 rounded-xl bg-slate-200 dark:bg-slate-700/70 shrink-0" />
-                  <div className="space-y-2.5">
-                    <div className="w-24 h-4 rounded-full bg-slate-200 dark:bg-slate-700/70" />
-                    <div className="w-48 sm:w-64 h-5 rounded-md bg-slate-200 dark:bg-slate-700/70" />
-                    <div className="w-36 sm:w-48 h-3.5 rounded-md bg-slate-200 dark:bg-slate-700/70" />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between lg:justify-end gap-5 pt-3.5 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-slate-700/80 shrink-0">
-                  <div className="space-y-2 text-right">
-                    <div className="w-24 h-6 rounded-md bg-slate-200 dark:bg-slate-700/70 ml-auto" />
-                    <div className="w-16 h-3.5 rounded-md bg-slate-200 dark:bg-slate-700/70 ml-auto" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-700/70" />
-                    <div className="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-700/70" />
-                  </div>
-                </div>
-              </div>
-            ))}
+        {/* Category Expenses List with Persistent Background and Simple Overlay Loader */}
+        {isCategoryDataLoading && filteredCategoryExpenses.length === 0 ? (
+          <div className="min-h-[240px] flex items-center justify-center py-16 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              <span>Loading category expenses...</span>
+            </div>
           </div>
-        ) : categoryExpenses.length === 0 ? (
+        ) : filteredCategoryExpenses.length === 0 ? (
           <div className="space-y-4">
-            <div
-              onClick={() => onOpenNewExpense?.()}
-              className="p-8 sm:p-12 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group min-h-[220px] shadow-2xs hover:shadow-md"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:scale-110 flex items-center justify-center shadow-2xs transition-all mb-3.5">
-                <Plus className="w-6 h-6" />
+            {hasCategoryFilters && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 shadow-2xs">
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
+                  No transactions match your current search or filter criteria.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearCategoryFilters}
+                  className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline self-start sm:self-auto cursor-pointer"
+                >
+                  Clear all filters
+                </button>
               </div>
-              <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                Add New Expense
+            )}
+
+            <div className="py-14 sm:py-16 text-center rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700/60 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <Receipt className="w-5 h-5 text-slate-400" />
+              </div>
+              <h4 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200">
+                No transactions found
               </h4>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-sm leading-relaxed">
-                Record an expense under "{activeCategory.name}" to track spending and split transactions
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-sm mx-auto">
+                {hasCategoryFilters
+                  ? `No expenses in ${activeCategory.name} match your filters.`
+                  : `No recorded expenses under ${activeCategory.name} yet.`}
               </p>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {categoryExpenses.map(exp => {
+          <div className="space-y-4 relative">
+            {/* Simple overlay loader on top of list when filtering/validating */}
+            {(isCategoryDataLoading || validatingExpenses) && (
+              <div className="absolute inset-0 z-20 flex items-start justify-center pt-16 bg-white/40 dark:bg-slate-900/40 rounded-2xl transition-opacity animate-in fade-in duration-150 pointer-events-none">
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                  <span>Loading category expenses...</span>
+                </div>
+              </div>
+            )}
+            {filteredCategoryExpenses.map(exp => {
               const isDeletingThis = deletingExpenseId === exp.id;
               const dateObj = new Date(exp.expenseDate);
               const dayNum = dateObj.toLocaleDateString('en-US', { day: '2-digit' });
@@ -670,8 +715,8 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
                           </span>
                           <span className="hidden sm:inline">·</span>
                           <span>
-                            Split ({exp.participants.length}):{' '}
-                            {exp.participants.map(p => p.name).join(', ')}
+                            Split ({(exp.participants || []).length}):{' '}
+                            {(exp.participants || []).map(p => p?.name || p?.userName || 'Member').join(', ')}
                           </span>
                         </div>
                       </div>
@@ -733,9 +778,9 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
           </div>
         )}
 
-        {/* Dimmed/Blurred Overlay Loader when Deleting Category */}
+        {/* Dimmed Overlay Loader when Deleting Category */}
         {isDeletingCategory && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all duration-200 animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 transition-all duration-200 animate-in fade-in">
             <div className="p-6 sm:p-7 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col items-center gap-3.5 max-w-xs w-full text-center mx-4">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-100 dark:border-rose-900/50 flex items-center justify-center">
                 <RefreshCw className="w-6 h-6 text-rose-600 dark:text-rose-400 animate-spin" />
@@ -774,6 +819,16 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
+            onClick={() => mutateCategories()}
+            title="Refresh categories list via SWR"
+            disabled={loading}
+            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenAdd}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs active:scale-[0.98] cursor-pointer"
           >
@@ -807,53 +862,25 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
           )}
         </div>
 
-        <div className="relative">
-          <ArrowUpDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <select
-            value={categorySort}
-            onChange={e => setCategorySort(e.target.value as any)}
-            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="name">Sort Categories: Name (A - Z)</option>
-            <option value="spend_high">Sort Categories: Highest Spend</option>
-            <option value="count_high">Sort Categories: Most Expenses</option>
-          </select>
-        </div>
+        <CustomSelect
+          value={categorySort}
+          onChange={val => setCategorySort(val)}
+          icon={<ArrowUpDown className="w-4 h-4" />}
+          options={[
+            { value: 'name', label: 'Sort Categories: Name (A - Z)' },
+            { value: 'spend_high', label: 'Sort Categories: Highest Spend' },
+            { value: 'count_high', label: 'Sort Categories: Most Expenses' },
+          ]}
+        />
       </div>
 
       {/* 3 Category Cards Per Row on Desktop/Tablet */}
       {loading && categories.length === 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {[1, 2, 3, 4, 5, 6].map(n => (
-            <div
-              key={n}
-              className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col justify-between h-48 animate-pulse"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700/70" />
-                    <div className="space-y-1.5">
-                      <div className="w-28 h-4 rounded bg-slate-200 dark:bg-slate-700/70" />
-                      <div className="w-16 h-3 rounded bg-slate-200 dark:bg-slate-700/70" />
-                    </div>
-                  </div>
-                  <div className="w-4 h-4 rounded bg-slate-200 dark:bg-slate-700/70" />
-                </div>
-                <div className="pt-2 space-y-1.5">
-                  <div className="w-20 h-3 rounded bg-slate-200 dark:bg-slate-700/70" />
-                  <div className="w-28 h-6 rounded bg-slate-200 dark:bg-slate-700/70" />
-                </div>
-              </div>
-              <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between">
-                <div className="w-28 h-3.5 rounded bg-slate-200 dark:bg-slate-700/70" />
-                <div className="flex gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700/70" />
-                  <div className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700/70" />
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="min-h-[260px] flex items-center justify-center py-16 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+            <span>Loading categories...</span>
+          </div>
         </div>
       ) : filteredCategories.length === 0 ? (
         <div className="space-y-4">
@@ -997,9 +1024,9 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
         );
       })()}
 
-      {/* Dimmed/Blurred Overlay Loader when Deleting Category */}
+      {/* Dimmed Overlay Loader when Deleting Category */}
       {isDeletingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all duration-200 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 transition-all duration-200 animate-in fade-in">
           <div className="p-6 sm:p-7 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col items-center gap-3.5 max-w-xs w-full text-center mx-4">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-100 dark:border-rose-900/50 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-rose-600 dark:text-rose-400 animate-spin" />

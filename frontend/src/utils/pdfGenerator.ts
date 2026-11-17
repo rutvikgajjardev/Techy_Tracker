@@ -108,24 +108,96 @@ export async function preloadImageAsDataUrl(url: string): Promise<string> {
 }
 
 /**
- * Generates a clean Base64 QR Code Data URL for UPI deep links.
+ * Helper to safely draw rounded rectangles on any HTML Canvas 2D context
+ */
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+}
+
+/**
+ * Generates a clean Base64 QR Code Data URL for UPI deep links with centered Techy Tracker logo.
+ * Uses High Error Correction ('H') to ensure 100% scan reliability while embedding the app branding.
  * Format: upi://pay?pa=<UPI_ID>&pn=<NAME>&am=<AMOUNT>&cu=INR&tn=<TITLE>
  */
 export async function generateUpiQrDataUrl(upiUri: string): Promise<string> {
   if (!upiUri) return '';
   try {
-    return await QRCode.toDataURL(upiUri, {
+    const canvas = document.createElement('canvas');
+    await QRCode.toCanvas(canvas, upiUri, {
       width: 280,
       margin: 1,
       color: {
         dark: '#0f172a',
         light: '#ffffff',
       },
-      errorCorrectionLevel: 'M',
+      errorCorrectionLevel: 'H',
     });
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const center = 140;
+      const boxSize = 54;
+      const halfBox = boxSize / 2;
+
+      // 1. Draw rounded white badge background in center
+      ctx.fillStyle = '#ffffff';
+      drawRoundedRect(ctx, center - halfBox, center - halfBox, boxSize, boxSize, 12);
+      ctx.fill();
+
+      // 2. Crisp Indigo Border for badge
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#4f46e5';
+      ctx.stroke();
+
+      // 3. Draw stylized Techy Tracker inner logo container
+      const innerSize = 38;
+      const halfInner = innerSize / 2;
+      ctx.fillStyle = '#4f46e5';
+      drawRoundedRect(ctx, center - halfInner, center - halfInner, innerSize, innerSize, 8);
+      ctx.fill();
+
+      // 4. Draw Indian Rupee '₹' symbol in white
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('₹', center, center + 1);
+    }
+
+    return canvas.toDataURL('image/png');
   } catch (err) {
-    console.error('Failed to generate QR data URL:', err);
-    return '';
+    console.error('Failed to generate QR data URL with logo:', err);
+    try {
+      return await QRCode.toDataURL(upiUri, {
+        width: 280,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+      });
+    } catch {
+      return '';
+    }
   }
 }
 
@@ -609,7 +681,7 @@ export async function generateVectorExpenseSheetPdf(
     curY += rowHeight;
   } else {
     participants.forEach((member, idx) => {
-      const isPayer = member.userId === expense.paidById || member.name === expense.paidByName;
+      const isPayer = member?.userId === expense?.paidById || member?.name === expense?.paidByName;
       const rowBg = idx % 2 === 0 ? colors.white : colors.bgAltRow;
 
       pdf.setFillColor(...rowBg);

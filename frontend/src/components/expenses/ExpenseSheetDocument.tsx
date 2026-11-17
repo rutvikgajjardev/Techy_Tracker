@@ -623,12 +623,12 @@ export const ExpenseSheetDocument: React.FC<ExpenseSheetDocumentProps> = ({
                 </tr>
               ) : (
                 participants.map((member, idx) => {
-                  const isPayer = member.userId === expense.paidById || member.name === expense.paidByName;
+                  const isPayer = member?.userId === expense?.paidById || member?.name === expense?.paidByName;
                   const rowBg = idx % 2 === 0 ? '#ffffff' : colors.bgAltRow;
 
                   return (
                     <tr
-                      key={member.userId || idx}
+                      key={member?.userId || idx}
                       style={{
                         borderBottom: `1px solid ${colors.borderLight}`,
                         backgroundColor: rowBg,
@@ -656,8 +656,8 @@ export const ExpenseSheetDocument: React.FC<ExpenseSheetDocumentProps> = ({
                           verticalAlign: 'middle',
                         }}
                       >
-                        <span>{member.name}</span>
-                        {member.email && (
+                        <span>{member?.name || 'Member'}</span>
+                        {member?.email && (
                           <span style={{ fontSize: '10px', color: colors.textMuted, fontWeight: 400, marginLeft: '6px' }}>
                             ({member.email})
                           </span>

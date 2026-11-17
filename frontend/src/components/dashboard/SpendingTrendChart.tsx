@@ -17,29 +17,46 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({ data }) 
     return data.filter(d => d.amount > 0);
   }, [data]);
 
-  // Max value calculation for Y axis scaling (giving 15% headroom above highest expense)
-  const maxVal = useMemo(() => {
-    if (pointsData.length === 0) return 100;
-    const max = Math.max(...pointsData.map(d => d.amount));
-    // Add headroom so amount labels on the highest bar don't hit the ceiling
-    const target = max * 1.18;
-    if (target <= 50) return 50;
-    if (target <= 100) return 100;
-    if (target <= 250) return 250;
-    if (target <= 500) return 500;
-    if (target <= 1000) return 1000;
-    return Math.ceil(target / 500) * 500;
-  }, [pointsData]);
+  // Dynamic Nice Scale & Ticks calculation
+  // Ensures clean round steps (e.g., 200, 400, 600) and gives the highest bar
+  // an impressive, prominent height (~75% - 85% of chart height) with comfortable headroom.
+  const { maxVal, yTicks } = useMemo(() => {
+    if (pointsData.length === 0) {
+      return { maxVal: 300, yTicks: [300, 200, 100, 0] };
+    }
 
-  // 4 horizontal dashed guide lines
-  const yTicks = useMemo(() => {
-    return [
-      Math.round(maxVal),
-      Math.round(maxVal * 0.66),
-      Math.round(maxVal * 0.33),
+    const maxAmount = Math.max(...pointsData.map(d => d.amount));
+    if (maxAmount <= 0) {
+      return { maxVal: 300, yTicks: [300, 200, 100, 0] };
+    }
+
+    // Target ~15% headroom above highest expense so amount tags fit cleanly
+    const target = maxAmount * 1.18;
+    const rawStep = target / 3;
+
+    // Find nearest nice step multiplier in base-10
+    const exponent = Math.floor(Math.log10(rawStep));
+    const fraction = rawStep / Math.pow(10, exponent);
+
+    let niceMultiplier = 1;
+    if (fraction <= 1) niceMultiplier = 1;
+    else if (fraction <= 2) niceMultiplier = 2;
+    else if (fraction <= 2.5) niceMultiplier = 2.5;
+    else if (fraction <= 5) niceMultiplier = 5;
+    else niceMultiplier = 10;
+
+    const step = Math.round(niceMultiplier * Math.pow(10, exponent));
+    const calculatedMax = step * 3;
+
+    const ticks = [
+      calculatedMax,
+      step * 2,
+      step,
       0,
     ];
-  }, [maxVal]);
+
+    return { maxVal: calculatedMax, yTicks: ticks };
+  }, [pointsData]);
 
   if (pointsData.length === 0) {
     return (
@@ -88,34 +105,34 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({ data }) 
       </div>
 
       {/* Chart Canvas Area */}
-      <div className="relative flex-1 flex flex-col justify-end min-h-[220px]">
+      <div className="relative flex-1 flex flex-col justify-end min-h-[250px]">
         {/* Background Y-Axis Dashed Guide Lines & Numerical Labels */}
-        <div className="absolute inset-0 top-3 bottom-14 pointer-events-none flex flex-col justify-between">
+        <div className="absolute top-0 left-0 right-0 h-48 pointer-events-none flex flex-col justify-between">
           {yTicks.map((tickVal, i) => (
             <div key={i} className="flex items-center gap-2 w-full">
-              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 w-9 text-right shrink-0 select-none">
+              <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500 w-10 text-right shrink-0 select-none">
                 {tickVal === 0 ? '0' : `₹${tickVal}`}
               </span>
-              <div className="flex-1 border-b border-dashed border-slate-200 dark:border-slate-700/60" />
+              <div className="flex-1 border-b border-dashed border-slate-200 dark:border-slate-700/70" />
             </div>
           ))}
         </div>
 
-        {/* Scrollable / Flexible Bar Track (Pl-11 for Y-axis label clearance) */}
+        {/* Scrollable / Flexible Bar Track (pl-12 for Y-axis label clearance) */}
         <div
-          className={`relative z-10 w-full pl-11 overflow-y-visible ${
+          className={`relative z-10 w-full pl-12 overflow-y-visible ${
             isScrollable ? 'overflow-x-auto pb-2 scrollbar-thin' : 'overflow-x-visible'
           }`}
         >
           <div
-            className={`flex items-end h-44 pt-8 px-2 ${
+            className={`flex items-start ${
               isScrollable
-                ? 'gap-5 justify-start min-w-max'
-                : 'gap-3 sm:gap-4 justify-around w-full'
+                ? 'gap-6 justify-start min-w-max'
+                : 'gap-4 sm:gap-6 justify-around w-full'
             }`}
           >
             {pointsData.map((item, idx) => {
-              const heightPercent = Math.max(8, (item.amount / maxVal) * 100);
+              const heightPercent = Math.max(6, (item.amount / maxVal) * 100);
               const isHovered = hoveredIndex === idx;
 
               return (
@@ -123,12 +140,12 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({ data }) 
                   key={item.id || idx}
                   onMouseEnter={() => setHoveredIndex(idx)}
                   onMouseLeave={() => setHoveredIndex(null)}
-                  className={`flex flex-col items-center h-full justify-end cursor-pointer group select-none relative ${
-                    isScrollable ? 'w-14 shrink-0' : 'flex-1 min-w-[50px] max-w-[68px]'
+                  className={`flex flex-col items-center cursor-pointer group select-none relative ${
+                    isScrollable ? 'w-16 shrink-0' : 'flex-1 min-w-[50px] max-w-[72px]'
                   }`}
                 >
-                  {/* Vertical Bar Container */}
-                  <div className="w-full flex flex-col justify-end h-full">
+                  {/* Grid Bar Area: Exactly matching h-48 */}
+                  <div className="w-full h-48 flex items-end justify-center relative">
                     <div
                       style={{ height: `${heightPercent}%` }}
                       className={`relative w-full rounded-t-xl transition-all duration-200 ${
@@ -140,19 +157,19 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({ data }) 
                       {/* Floating Tooltip: Positioned DIRECTLY on top of THIS bar's height (No gap) */}
                       {isHovered && (
                         <div className="absolute -top-14 left-1/2 -translate-x-1/2 pointer-events-none z-30 flex flex-col items-center animate-in fade-in zoom-in-95 duration-100">
-                          <div className="px-2.5 py-1.5 rounded-xl bg-slate-900/95 dark:bg-slate-800/95 text-white border border-slate-700 shadow-xl backdrop-blur-xs whitespace-nowrap text-center max-w-[170px]">
-                            <span className="font-bold text-xs block truncate text-white leading-tight">
+                          <div className="px-3 py-1.5 rounded-xl bg-white/95 dark:bg-slate-800/95 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-slate-950/60 backdrop-blur-xs whitespace-nowrap text-center max-w-[170px]">
+                            <span className="font-bold text-xs block truncate text-slate-900 dark:text-white leading-tight">
                               {item.title || item.category || 'Expense'}
                             </span>
                             {item.category && (
-                              <div className="inline-flex items-center gap-1 text-[10px] text-indigo-300 dark:text-indigo-400 mt-0.5">
-                                <Tag className="w-2.5 h-2.5" />
+                              <div className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
+                                <Tag className="w-2.5 h-2.5 shrink-0" />
                                 <span className="truncate">{item.category}</span>
                               </div>
                             )}
                           </div>
                           {/* Downward triangle pointer touching top of the bar */}
-                          <div className="w-2 h-2 bg-slate-900/95 dark:bg-slate-800/95 rotate-45 -mt-1 border-r border-b border-slate-700" />
+                          <div className="w-2 h-2 bg-white/95 dark:bg-slate-800/95 rotate-45 -mt-1 border-r border-b border-slate-200 dark:border-slate-700 shadow-2xs" />
                         </div>
                       )}
 
@@ -170,7 +187,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({ data }) 
                   </div>
 
                   {/* Bottom Metadata: Line 1 = Date, Line 2 = Time (NO Expense Title at bottom) */}
-                  <div className="mt-2 text-center flex flex-col items-center w-full">
+                  <div className="mt-2.5 text-center flex flex-col items-center w-full">
                     {/* Line 1: Date */}
                     <span
                       className={`text-[11px] font-mono font-bold whitespace-nowrap transition-colors ${

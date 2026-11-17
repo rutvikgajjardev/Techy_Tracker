@@ -17,6 +17,10 @@ try:
     from backend.services.email_service import send_otp_email
 except ImportError:
     from services.email_service import send_otp_email
+try:
+    from backend.db import with_db, run_db_coro
+except ImportError:
+    from db import with_db, run_db_coro
 from prisma import Prisma
 
 auth_bp = Blueprint("auth", __name__)
@@ -79,7 +83,15 @@ def login():
                 }
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -145,7 +157,15 @@ def register():
                 }
             }), 201
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -175,7 +195,15 @@ def get_me(current_user_id):
                 }
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -192,47 +220,49 @@ def update_profile(current_user_id):
     name = data.get("name")
     upi_id = data.get("upi_id")
 
-    async def _update():
-        db = Prisma()
-        await db.connect()
-        try:
-            update_data = {}
-            if name is not None:
-                cleaned_name = name.strip()
-                if not cleaned_name:
-                    return jsonify({"success": False, "error": "Name cannot be empty"}), 400
-                update_data["name"] = cleaned_name
+    update_data = {}
+    if name is not None:
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            return jsonify({"success": False, "error": "Name cannot be empty"}), 400
+        update_data["name"] = cleaned_name
 
-            if upi_id is not None:
-                cleaned_upi = upi_id.strip().lower() or None
-                if cleaned_upi:
-                    existing = await db.user.find_unique(where={"upi_id": cleaned_upi})
-                    if existing and existing.id != current_user_id:
-                        return jsonify({"success": False, "error": "User with this UPI ID already exists"}), 400
-                update_data["upi_id"] = cleaned_upi
+    if upi_id is not None:
+        cleaned_upi = upi_id.strip().lower() or None
+        update_data["upi_id"] = cleaned_upi
 
-            if not update_data:
-                return jsonify({"success": False, "error": "No update fields provided"}), 400
+    if not update_data:
+        return jsonify({"success": False, "error": "No update fields provided"}), 400
 
-            updated_user = await db.user.update(where={"id": current_user_id}, data=update_data)
-            return jsonify({
-                "success": True,
-                "message": "Profile updated successfully",
-                "user": {
-                    "id": updated_user.id,
-                    "name": updated_user.name,
-                    "email": updated_user.email,
-                    "upi_id": getattr(updated_user, "upi_id", None)
-                }
-            }), 200
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-        finally:
-            if db.is_connected():
-                await db.disconnect()
+    try:
+        @with_db
+        async def _do_update(db):
+            if "upi_id" in update_data and update_data["upi_id"]:
+                existing = await db.user.find_unique(where={"upi_id": update_data["upi_id"]})
+                if existing and existing.id != current_user_id:
+                    return {"conflict": True}
 
-    import asyncio
-    return asyncio.run(_update())
+            updated = await db.user.update(where={"id": current_user_id}, data=update_data)
+            return {"user": updated}
+
+        res = _do_update()
+        if res.get("conflict"):
+            return jsonify({"success": False, "error": "User with this UPI ID already exists"}), 400
+
+        updated_user = res["user"]
+        return jsonify({
+            "success": True,
+            "message": "Profile updated successfully",
+            "user": {
+                "id": updated_user.id,
+                "name": updated_user.name,
+                "email": updated_user.email,
+                "upi_id": getattr(updated_user, "upi_id", None),
+                "profileImage": getattr(updated_user, "profileImage", None)
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @auth_bp.route("/users", methods=["GET"])
@@ -249,7 +279,15 @@ def list_users(current_user_id):
                 "users": [{"id": u.id, "name": u.name, "email": u.email, "upi_id": getattr(u, "upi_id", None)} for u in users]
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -262,52 +300,63 @@ def list_users(current_user_id):
 @token_required
 def upload_profile_image(current_user_id):
     """Upload user profile picture using Cloudinary and save to User.profileImage"""
-    async def _do_upload():
-        if "image" not in request.files:
-            return jsonify({"success": False, "error": "No image file provided"}), 400
-        
-        file = request.files["image"]
+    file = request.files.get("image") or request.files.get("profileImage") or request.files.get("file")
 
-        if file.filename == "":
-            return jsonify({"success": False, "error": "No selected file"}), 400
+    if not file or file.filename == "":
+        return jsonify({"success": False, "error": "No image file provided"}), 400
 
-        db = Prisma()
-        try:
-            # Cloudinary upload
-            upload_result = cloudinary.uploader.upload(
-                file,
-                folder="my_project_uploads",
-                transformation=[{"quality": "auto", "fetch_format": "auto"}]
-            )
+    # Pre-check file size (10 MB = 10 * 1024 * 1024 bytes)
+    file.seek(0, 2)
+    size_bytes = file.tell()
+    file.seek(0)
+    if size_bytes > 10 * 1024 * 1024:
+        size_mb = round(size_bytes / (1024 * 1024), 1)
+        return jsonify({
+            "success": False,
+            "error": f"The profile image is too large ({size_mb} MB). Please upload an image under 10 MB."
+        }), 400
 
-            # Update user profile with image URL
-            await db.connect()
+    try:
+        # Cloudinary upload
+        upload_result = cloudinary.uploader.upload(
+            file,
+            folder="splitease_profiles",
+            transformation=[{"quality": "auto", "fetch_format": "auto"}]
+        )
+        secure_url = upload_result.get("secure_url")
 
-            updated_user = await db.user.update(
+        @with_db
+        async def _update_user_db(db):
+            return await db.user.update(
                 where={"id": current_user_id},
-                data={"profileImage": upload_result.get("secure_url")}
+                data={"profileImage": secure_url}
             )
 
-            return jsonify({
-                "success": True,
-                "message": "Profile image uploaded successfully",
-                "user": {
-                    "id": updated_user.id,
-                    "name": updated_user.name,
-                    "email": updated_user.email,
-                    "profileImage": updated_user.profileImage,
-                    "upi_id": getattr(updated_user, "upi_id", None)
-                }
-            }), 200
+        updated_user = _update_user_db()
 
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-        finally:
-            if db.is_connected():
-                await db.disconnect()
+        return jsonify({
+            "success": True,
+            "message": "Profile image uploaded successfully",
+            "url": secure_url,
+            "user": {
+                "id": updated_user.id,
+                "name": updated_user.name,
+                "email": updated_user.email,
+                "profileImage": updated_user.profileImage,
+                "upi_id": getattr(updated_user, "upi_id", None)
+            }
+        }), 200
 
-    import asyncio
-    return asyncio.run(_do_upload())
+    except Exception as e:
+        err_str = str(e)
+        import re
+        match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+        if match:
+            got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+            max_mb = round(int(match.group(2)) / (1024 * 1024))
+            friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+            return jsonify({"success": False, "error": friendly_err}), 400
+        return jsonify({"success": False, "error": f"Profile upload failed: {err_str}"}), 500
 
 
 @auth_bp.route("/verify-password", methods=["POST"])
@@ -337,7 +386,15 @@ def verify_password(current_user_id):
                 "message": "Current password verified successfully"
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -396,7 +453,15 @@ def change_password(current_user_id):
                 "message": "Password changed successfully"
             }), 200
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -470,7 +535,15 @@ def forgot_password():
             }), 200
 
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()
@@ -575,7 +648,15 @@ def reset_password():
             }), 200
 
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            err_str = str(e)
+            import re
+            match = re.search(r"File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)", err_str, re.IGNORECASE)
+            if match:
+                got_mb = round(int(match.group(1)) / (1024 * 1024), 1)
+                max_mb = round(int(match.group(2)) / (1024 * 1024))
+                friendly_err = f"The profile image is too large ({got_mb} MB). Please upload an image under {max_mb} MB."
+                return jsonify({"success": False, "error": friendly_err}), 400
+            return jsonify({"success": False, "error": err_str}), 500
         finally:
             if db.is_connected():
                 await db.disconnect()

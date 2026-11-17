@@ -27,7 +27,6 @@ model User {
   createdExpenses   Expense[]            @relation("UserCreatedExpenses")
   paidExpenses      Expense[]            @relation("UserPaidExpenses")
   participations    ExpenseParticipant[]
-  createdCategories Category[]           @relation("UserCreatedCategories")
   auditLogs         ExpenseAuditLog[]
 
   @@index([email])
@@ -39,9 +38,6 @@ model User {
 model Category {
   id          Int       @id @default(autoincrement())
   name        String    @unique
-  icon        String    @default("tag")
-  createdById Int?
-  createdBy   User?     @relation("UserCreatedCategories", fields: [createdById], references: [id], onDelete: SetNull)
   expenses    Expense[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -55,7 +51,6 @@ model Category {
 enum ExpenseStatus {
   PENDING
   COMPLETED
-  CANCELLED
 }
 
 model Expense {
@@ -63,7 +58,6 @@ model Expense {
   title        String
   description  String?
   amount       Decimal              @db.Decimal(12, 2)
-  currency     String               @default("INR")
   status       ExpenseStatus        @default(PENDING)
   expenseDate  DateTime             @default(now())
   images       String[]             @default([])

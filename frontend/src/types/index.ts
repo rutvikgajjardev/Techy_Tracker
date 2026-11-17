@@ -147,8 +147,13 @@ export interface SettlementExpenseItem {
   categoryId: number;
   categoryName: string;
   amount: number;
+  yourShare?: number;
+  totalExpenseAmount?: number;
   expenseDate: string;
   type: 'THEY_OWE_YOU' | 'YOU_OWE_THEM';
+  relationship?: 'OWES_YOU' | 'YOU_OWE';
+  paidByName?: string;
+  participantName?: string;
 }
 
 export interface SettlementPair {

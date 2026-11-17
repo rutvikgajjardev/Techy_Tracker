@@ -128,9 +128,13 @@ export function buildDashboardQueryParams(
 ): string {
   const params = new URLSearchParams();
   params.set('period', period);
-  if (period === 'custom' && customStart && customEnd) {
-    params.set('start_date', customStart);
-    params.set('end_date', customEnd);
+  if (period === 'custom') {
+    if (customStart && customStart.trim()) {
+      params.set('start_date', customStart.trim());
+    }
+    if (customEnd && customEnd.trim()) {
+      params.set('end_date', customEnd.trim());
+    }
   }
   return `?${params.toString()}`;
 }
@@ -370,7 +374,14 @@ export const apiService = {
               images: data.images || [],
             });
           } else {
-            reject(new Error(data?.error || data?.message || 'Failed to upload images'));
+            let errorMsg = data?.error || data?.message || 'Failed to upload images';
+            const match = errorMsg.match(/File size too large\.\s*Got\s*(\d+)\.\s*Maximum is\s*(\d+)/i);
+            if (match) {
+              const gotMB = (parseInt(match[1], 10) / (1024 * 1024)).toFixed(1);
+              const maxMB = Math.round(parseInt(match[2], 10) / (1024 * 1024));
+              errorMsg = `The file you uploaded is too large (${gotMB} MB). Please upload an image under ${maxMB} MB.`;
+            }
+            reject(new Error(errorMsg));
           }
         } catch (e: any) {
           reject(new Error(e.message || 'Failed to parse upload response'));
@@ -448,8 +459,44 @@ export const apiService = {
   // 9. PAIR-WISE NET SETTLEMENTS (SCENARIO 1)
   // ============================================
   async getSettlementPairs(): Promise<SettlementPair[]> {
-    const data = await request<{ success: boolean; pairs: SettlementPair[] }>('/settlements/pairs');
-    return data.pairs || [];
+    const data = await request<{ success: boolean; pairs: any[] }>('/settlements/pairs');
+    const rawPairs = data.pairs || [];
+    return rawPairs.map(p => ({
+      ...p,
+      theyOweMe: Number(p.theyOweMe ?? p.they_owe_me ?? 0),
+      iOweThem: Number(p.iOweThem ?? p.i_owe_them ?? 0),
+      netAmount: Number(p.netAmount ?? p.net_amount ?? 0),
+      user: p.user || {
+        id: p.friendId,
+        name: p.friendName || 'Friend',
+        email: p.friendEmail || '',
+        upi_id: p.friendUpiId || null,
+        profileImage: p.friendProfileImage || null,
+      },
+      categories: (p.categories || []).map((cat: any) => ({
+        categoryId: cat.categoryId ?? cat.category_id ?? 0,
+        categoryName: cat.categoryName ?? cat.category_name ?? 'General',
+        theyOweMe: Number(cat.theyOweMe ?? cat.they_owe_me ?? 0),
+        iOweThem: Number(cat.iOweThem ?? cat.i_owe_them ?? 0),
+        amount: Number(cat.amount ?? 0),
+        totalPending: Number(cat.totalPending ?? cat.total_pending ?? ((Number(cat.theyOweMe || cat.they_owe_me || 0)) + (Number(cat.iOweThem || cat.i_owe_them || 0)))),
+        net: Number(cat.net ?? ((Number(cat.theyOweMe || cat.they_owe_me || 0)) - (Number(cat.iOweThem || cat.i_owe_them || 0)))),
+      })),
+      expenses: (p.expenses || []).map((e: any) => ({
+        id: e.id ?? e.expenseId,
+        title: e.title || '',
+        categoryId: e.categoryId ?? e.category_id ?? 0,
+        categoryName: e.categoryName ?? e.category_name ?? 'General',
+        amount: Number(e.amount ?? e.yourShare ?? e.totalExpenseAmount ?? 0),
+        yourShare: Number(e.yourShare ?? e.amount ?? 0),
+        totalExpenseAmount: Number(e.totalExpenseAmount ?? e.amount ?? 0),
+        expenseDate: e.expenseDate || '',
+        type: e.type || (e.relationship === 'YOU_OWE' ? 'YOU_OWE_THEM' : 'THEY_OWE_YOU'),
+        relationship: e.relationship,
+        paidByName: e.paidByName || '',
+        participantName: e.participantName || '',
+      })),
+    }));
   },
 
   async settlePair(targetUserId: number): Promise<{ success: boolean; message: string }> {
