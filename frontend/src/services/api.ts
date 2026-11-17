@@ -5,6 +5,7 @@ import {
   DashboardSummary,
   ExpenseFilters,
   User,
+  SettlementPair,
 } from '../types';
 
 export const TOKEN_STORAGE_KEY = 'techy_traker_jwt_token_v2';
@@ -270,7 +271,8 @@ export const apiService = {
       title: string;
       description?: string;
       amount: number;
-      categoryId: number;
+      categoryId?: number;
+      categoryName?: string;
       paidById: number;
       participantUserIds: number[];
       expenseDate?: string;
@@ -292,6 +294,7 @@ export const apiService = {
       description?: string;
       amount?: number;
       categoryId?: number;
+      categoryName?: string;
       paidById?: number;
       participantUserIds?: number[];
       status?: 'PENDING' | 'COMPLETED';
@@ -439,5 +442,20 @@ export const apiService = {
     otp: string = ''
   ): Promise<string> {
     return this.resetPasswordWithOtp(email, otp, newPassword, confirmPassword);
+  },
+
+  // ============================================
+  // 9. PAIR-WISE NET SETTLEMENTS (SCENARIO 1)
+  // ============================================
+  async getSettlementPairs(): Promise<SettlementPair[]> {
+    const data = await request<{ success: boolean; pairs: SettlementPair[] }>('/settlements/pairs');
+    return data.pairs || [];
+  },
+
+  async settlePair(targetUserId: number): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>('/settlements/pair-settle', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    });
   },
 };

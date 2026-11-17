@@ -6,16 +6,19 @@ import { KPICards } from '../components/dashboard/KPICards';
 import { SpendingTrendChart } from '../components/dashboard/SpendingTrendChart';
 import { CategoryDonutChart } from '../components/dashboard/CategoryDonutChart';
 import { RecentExpensesWidget } from '../components/dashboard/RecentExpensesWidget';
+import { NetSettlementWidget } from '../components/dashboard/NetSettlementWidget';
 import { DatePicker } from '../components/ui/DatePicker';
 
 interface DashboardPageProps {
   onNavigateToExpenses: () => void;
   onSelectExpense: (expense: Expense) => void;
+  onNotify?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToExpenses,
   onSelectExpense,
+  onNotify,
 }) => {
   const [period, setPeriod] = useState<TimePeriodFilter>('all_time');
   const [customStart, setCustomStart] = useState('');
@@ -132,9 +135,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Loading state skeleton if first load */}
       {isLoading && !summary && (
         <div className="space-y-6 animate-pulse">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(n => (
-              <div key={n} className="h-28 rounded-xl bg-slate-200 dark:bg-slate-800" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map(n => (
+              <div key={n} className="h-28 rounded-2xl bg-slate-200 dark:bg-slate-800" />
             ))}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -146,6 +149,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* KPI Cards */}
       {summary && <KPICards kpis={summary.kpis} />}
+
+      {/* Friends Net Balances & Instant 1-Click Settlement (Scenario 1) */}
+      <NetSettlementWidget onNotify={onNotify} />
 
       {/* Visualizations Grid */}
       {summary && (

@@ -691,14 +691,16 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onEditExpense(exp)}
-                          disabled={isDeletingThis}
-                          className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Edit expense"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        {exp.status !== 'COMPLETED' && (
+                          <button
+                            onClick={() => onEditExpense(exp)}
+                            disabled={isDeletingThis}
+                            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Edit expense"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
                         {currentUser?.id === exp.createdById && (
                           <button
                             type="button"
@@ -767,6 +769,17 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Click any category card to view and filter its expenses
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleOpenAdd}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs active:scale-[0.98] cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Category</span>
+          </button>
         </div>
       </div>
 
@@ -860,39 +873,28 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
             </div>
           )}
 
-          <div
-            onClick={handleOpenAdd}
-            className="p-8 sm:p-12 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group min-h-[220px] shadow-2xs hover:shadow-md max-w-lg mx-auto"
-          >
-            <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:scale-110 flex items-center justify-center shadow-2xs transition-all mb-3.5">
-              <Plus className="w-6 h-6" />
+          <div className="p-8 sm:p-12 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col items-center justify-center text-center max-w-lg mx-auto shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3">
+              <Tag className="w-6 h-6" />
             </div>
-            <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              Add New Category
+            <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+              No categories found
             </h4>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-sm leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
               Create a custom tag to track and split transactions across your groups
             </p>
+            <button
+              type="button"
+              onClick={handleOpenAdd}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs active:scale-[0.98] cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Category</span>
+            </button>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Card 1: Add New Category Action Card (Always prominently visible in grid) */}
-          <div
-            onClick={handleOpenAdd}
-            className="p-5 sm:p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group min-h-[190px] shadow-2xs"
-          >
-            <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:scale-110 flex items-center justify-center shadow-2xs transition-all mb-3">
-              <Plus className="w-5 h-5" />
-            </div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              Add New Category
-            </h4>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-[200px]">
-              Create a tag to track and split transactions
-            </p>
-          </div>
-
           {filteredCategories.map(cat => {
             const count = cat.expenseCount || 0;
             const totalSpent = cat.totalSpent || 0;
@@ -966,20 +968,34 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({
       )}
 
       {/* Confirm Delete Dialog */}
-      <ConfirmDialog
-        isOpen={!!deletingCategory}
-        title={`Delete Category "${deletingCategory?.name}"?`}
-        message={
-          (deletingCategory?.expenseCount || 0) > 0
-            ? `Warning: This category has ${deletingCategory?.expenseCount} linked expenses! Please reassign or delete those expenses before removing this category.`
-            : 'Are you sure you want to permanently delete this category? This action cannot be undone.'
-        }
-        confirmLabel="Yes, Delete"
-        cancelLabel="Cancel"
-        tone="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeletingCategory(null)}
-      />
+      {(() => {
+        const hasLinkedExpenses = (deletingCategory?.expenseCount || 0) > 0;
+        return (
+          <ConfirmDialog
+            isOpen={!!deletingCategory}
+            title={
+              hasLinkedExpenses
+                ? `Cannot Delete Category "${deletingCategory?.name}"`
+                : `Delete Category "${deletingCategory?.name}"?`
+            }
+            subtitle={
+              hasLinkedExpenses
+                ? 'Category has linked expenses'
+                : 'Please confirm this action'
+            }
+            message={
+              hasLinkedExpenses
+                ? `You cannot delete this category because it currently has ${deletingCategory?.expenseCount} linked expense(s).\n\nPlease reassign or delete those expenses before removing this category.`
+                : 'Are you sure you want to permanently delete this category? This action cannot be undone.'
+            }
+            confirmLabel={hasLinkedExpenses ? 'Okay' : 'Yes, Delete'}
+            showCancel={!hasLinkedExpenses}
+            tone={hasLinkedExpenses ? 'warning' : 'danger'}
+            onConfirm={hasLinkedExpenses ? () => setDeletingCategory(null) : handleConfirmDelete}
+            onCancel={() => setDeletingCategory(null)}
+          />
+        );
+      })()}
 
       {/* Dimmed/Blurred Overlay Loader when Deleting Category */}
       {isDeletingCategory && (

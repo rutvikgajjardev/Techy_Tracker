@@ -1,7 +1,3 @@
-"""
-Email Service for Techy Tracker
-Sends Password Recovery & Verification OTP emails using Python's built-in smtplib and Gmail SMTP.
-"""
 import os
 import smtplib
 import ssl

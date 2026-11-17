@@ -91,8 +91,14 @@ export interface CategoryDistribution {
 }
 
 export interface SpendingTrendPoint {
+  id?: number;
+  title?: string;
+  category?: string;
   date: string;
+  time?: string;
   amount: number;
+  totalAmount?: number;
+  rawDate?: string;
 }
 
 export interface DashboardSummary {
@@ -121,4 +127,38 @@ export interface CurrencyConfig {
   symbol: string;
   label: string;
   locale: string;
+}
+
+// ==========================================
+// 6. PAIR-WISE NET SETTLEMENTS (SCENARIO 1)
+// ==========================================
+export interface SettlementCategoryBreakdown {
+  categoryId: number;
+  categoryName: string;
+  theyOweMe: number;
+  iOweThem: number;
+  totalPending: number;
+  net: number;
+}
+
+export interface SettlementExpenseItem {
+  id: number;
+  title: string;
+  categoryId: number;
+  categoryName: string;
+  amount: number;
+  expenseDate: string;
+  type: 'THEY_OWE_YOU' | 'YOU_OWE_THEM';
+}
+
+export interface SettlementPair {
+  user: User;
+  theyOweMe: number;
+  iOweThem: number;
+  netAmount: number;
+  rawNet: number;
+  status: 'OWES_YOU' | 'YOU_OWE' | 'SETTLED';
+  categories: SettlementCategoryBreakdown[];
+  expenses: SettlementExpenseItem[];
+  pendingExpensesCount: number;
 }

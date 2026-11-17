@@ -19,6 +19,7 @@ from backend.controllers.auth_controller import auth_bp
 from backend.controllers.dashboard_controller import dashboard_bp
 from backend.controllers.expense_controller import expense_bp
 from backend.controllers.category_controller import category_bp
+from backend.controllers.settlement_controller import settlement_bp
 
 # Configure Cloudinary from centralized Config
 cloudinary.config(
@@ -53,6 +54,7 @@ def create_app(config_class=Config):
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(expense_bp, url_prefix="/api/expenses")
     app.register_blueprint(category_bp, url_prefix="/api/categories")
+    app.register_blueprint(settlement_bp, url_prefix="/api/settlements")
 
     # 4. Standard Global Error Handlers
     @app.errorhandler(400)

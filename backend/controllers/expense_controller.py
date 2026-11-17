@@ -193,7 +193,8 @@ def create_expense(current_user_id):
     title = (data.get("title") or "").strip()
     description = (data.get("description") or "").strip() or None
     amount = float(data.get("amount") or 0)
-    category_id = int(data.get("categoryId") or 1)
+    category_id = data.get("categoryId")
+    category_name = (data.get("categoryName") or "").strip()
     paid_by_id = int(data.get("paidById") or current_user_id)
     participant_ids = data.get("participantUserIds") or [paid_by_id]
     expense_date_str = data.get("expenseDate")
@@ -209,10 +210,28 @@ def create_expense(current_user_id):
         db = Prisma()
         await db.connect()
         try:
-            # 1. Verify Category exists or fallback safely
-            cat = await db.category.find_unique(where={"id": category_id})
-            target_cat_id = category_id
-            if not cat:
+            # 1. Resolve Category: create on-the-fly if new name, or find existing
+            target_cat_id = None
+            if category_name:
+                all_cats = await db.category.find_many()
+                for c in all_cats:
+                    if c.name.strip().lower() == category_name.lower():
+                        target_cat_id = c.id
+                        break
+                if not target_cat_id:
+                    new_cat = await db.category.create(
+                        data={"name": category_name, "icon": "tag", "createdById": current_user_id}
+                    )
+                    target_cat_id = new_cat.id
+            elif category_id:
+                try:
+                    cat = await db.category.find_unique(where={"id": int(category_id)})
+                    if cat:
+                        target_cat_id = cat.id
+                except (ValueError, TypeError):
+                    pass
+
+            if not target_cat_id:
                 first_cat = await db.category.find_first(order={"id": "asc"})
                 if not first_cat:
                     first_cat = await db.category.create(
@@ -358,16 +377,27 @@ def update_expense(current_user_id, expense_id):
             new_title = data.get("title", old_exp.title)
             new_desc = data.get("description", old_exp.description)
             new_amount = float(data.get("amount", float(old_exp.amount)))
-            target_cat_id = int(data.get("categoryId", old_exp.categoryId))
+            target_cat_id = old_exp.categoryId
+            new_cat_name = (data.get("categoryName") or "").strip()
+            if new_cat_name:
+                matched_cat = next((c for c in cats if c.name.strip().lower() == new_cat_name.lower()), None)
+                if matched_cat:
+                    target_cat_id = matched_cat.id
+                else:
+                    new_cat = await db.category.create(
+                        data={"name": new_cat_name, "icon": "tag", "createdById": current_user_id}
+                    )
+                    target_cat_id = new_cat.id
+            elif "categoryId" in data:
+                try:
+                    cat = await db.category.find_unique(where={"id": int(data["categoryId"])})
+                    if cat:
+                        target_cat_id = cat.id
+                except (ValueError, TypeError):
+                    pass
             target_paid_by_id = int(data.get("paidById", old_exp.paidById))
             new_status = data.get("status", old_exp.status)
             raw_participant_ids = data.get("participantUserIds") or [p.userId for p in old_exp.participants]
-
-            # 1. Validate Category
-            cat = await db.category.find_unique(where={"id": target_cat_id})
-            if not cat:
-                first_cat = await db.category.find_first(order={"id": "asc"})
-                target_cat_id = first_cat.id if first_cat else old_exp.categoryId
 
             # 2. Validate Paid By
             payer_user = await db.user.find_unique(where={"id": target_paid_by_id})

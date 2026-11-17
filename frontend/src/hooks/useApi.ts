@@ -6,6 +6,7 @@ import {
   DashboardSummary,
   ExpenseFilters,
   User,
+  SettlementPair,
 } from '../types';
 import {
   swrFetcher,
@@ -95,6 +96,7 @@ export function useExpenses(filters?: Partial<ExpenseFilters>) {
     isValidating,
     error,
     mutateExpenses: mutate,
+    hasData: Boolean(data),
   };
 }
 
@@ -147,6 +149,33 @@ export function useUsers() {
 }
 
 /**
+ * Hook to fetch Pair-wise Net Settlement Balances with SWR (Scenario 1)
+ */
+export function useSettlementPairs() {
+  const token = getAuthToken();
+  const key = token ? '/settlements/pairs' : null;
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{
+    success: boolean;
+    pairs: SettlementPair[];
+    count: number;
+  }>(key, swrFetcher, {
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+    dedupingInterval: 3000,
+  });
+
+  return {
+    pairs: data?.pairs || [],
+    count: data?.count || (data?.pairs ? data.pairs.length : 0),
+    isLoading,
+    isValidating,
+    error,
+    mutatePairs: mutate,
+  };
+}
+
+/**
  * Hook to check API Health
  */
 export function useHealth() {
@@ -175,7 +204,15 @@ export function useAppMutations() {
 
   const invalidateExpenses = () => {
     return mutate(
-      (key) => typeof key === 'string' && (key.startsWith('/expenses') || key.startsWith('/dashboard/summary') || key.startsWith('/categories')),
+      (key) => typeof key === 'string' && (key.startsWith('/expenses') || key.startsWith('/dashboard/summary') || key.startsWith('/categories') || key.startsWith('/settlements')),
+      undefined,
+      { revalidate: true }
+    );
+  };
+
+  const invalidateSettlements = () => {
+    return mutate(
+      (key) => typeof key === 'string' && (key.startsWith('/settlements') || key.startsWith('/dashboard/summary') || key.startsWith('/expenses')),
       undefined,
       { revalidate: true }
     );
@@ -260,6 +297,7 @@ export function useAppMutations() {
   return {
     invalidateExpenses,
     invalidateCategories,
+    invalidateSettlements,
     invalidateAll,
     addExpenseToCache,
     updateExpenseInCache,

@@ -9,7 +9,6 @@ import { ExpensesPage } from './pages/ExpensesPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { AuthPage } from './pages/AuthPage';
-import { ExpenseDetailModal } from './components/expenses/ExpenseDetailModal';
 import { ConfirmDialog } from './components/ui/Dialog';
 import { ToastContainer, ToastMessage } from './components/ui/Toast';
 import { ProfileModal } from './components/ui/ProfileModal';
@@ -39,9 +38,8 @@ const MainAppContent: React.FC = () => {
   const [syncMessage, setSyncMessage] = useState('');
   const [recentCreatedId, setRecentCreatedId] = useState<number | null>(null);
 
-  // Modals & Dialogs State
+  // Expense Selection & Form State
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const [formExpense, setFormExpense] = useState<Expense | null>(null);
   const [isExpenseFormOpen, setIsExpenseFormOpen] = useState(false);
@@ -77,7 +75,6 @@ const MainAppContent: React.FC = () => {
       setFormExpense(null);
       setIsChangePasswordActive(false);
       setSelectedExpense(null);
-      setIsDetailModalOpen(false);
     }
   }, [isAuthenticated, currentUser?.id]);
 
@@ -103,19 +100,26 @@ const MainAppContent: React.FC = () => {
   const handleOpenNewExpense = () => {
     setFormExpense(null);
     setIsExpenseFormOpen(true);
+    setSelectedExpense(null);
     setCurrentTab('expenses');
   };
 
   const handleOpenEditExpense = (expense: Expense) => {
+    if (expense.status === 'COMPLETED') {
+      addToast('info', 'Completed expenses cannot be edited.');
+      return;
+    }
     setFormExpense(expense);
     setIsExpenseFormOpen(true);
-    setIsDetailModalOpen(false);
+    setSelectedExpense(null);
     setCurrentTab('expenses');
   };
 
-  const handleOpenDetailModal = async (expense: Expense) => {
+  const handleOpenDetailView = async (expense: Expense) => {
     setSelectedExpense(expense);
-    setIsDetailModalOpen(true);
+    setIsExpenseFormOpen(false);
+    setFormExpense(null);
+    setCurrentTab('expenses');
 
     // Fetch full expense details from backend to ensure all participants, audit trail, images are fully populated
     if (!expense.participants || !expense.auditTrail) {
@@ -145,7 +149,7 @@ const MainAppContent: React.FC = () => {
       await removeExpenseFromCache(target.id);
       addToast('success', `Expense "${target.title}" deleted successfully.`);
       if (selectedExpense?.id === target.id) {
-        setIsDetailModalOpen(false);
+        setSelectedExpense(null);
       }
       setDeletingExpense(null);
       // Revalidate SWR caches instantly across all tabs & views
@@ -248,7 +252,6 @@ const MainAppContent: React.FC = () => {
     setFormExpense(null);
     setIsChangePasswordActive(false);
     setSelectedExpense(null);
-    setIsDetailModalOpen(false);
     logout();
     addToast('info', 'You have been logged out of Techy Tracker.');
   };
@@ -264,9 +267,10 @@ const MainAppContent: React.FC = () => {
         onSelectTab={tab => {
           setCurrentTab(tab);
           setIsChangePasswordActive(false);
-          // Always land on the main screen of the selected tab, closing any in-progress expense form
+          // Always land on the main screen of the selected tab, closing any in-progress expense form or detail view
           setIsExpenseFormOpen(false);
           setFormExpense(null);
+          setSelectedExpense(null);
         }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
@@ -301,14 +305,16 @@ const MainAppContent: React.FC = () => {
                     setCurrentTab('expenses');
                     setIsExpenseFormOpen(false);
                     setFormExpense(null);
+                    setSelectedExpense(null);
                   }}
-                  onSelectExpense={handleOpenDetailModal}
+                  onSelectExpense={handleOpenDetailView}
+                  onNotify={(type, msg) => addToast(type, msg)}
                 />
               )}
 
               {currentTab === 'expenses' && (
                 <ExpensesPage
-                  onSelectExpense={handleOpenDetailModal}
+                  onSelectExpense={handleOpenDetailView}
                   onEditExpense={handleOpenEditExpense}
                   onRequestDeleteExpense={handleRequestDeleteExpense}
                   onOpenNewExpense={handleOpenNewExpense}
@@ -319,6 +325,9 @@ const MainAppContent: React.FC = () => {
                     setFormExpense(null);
                   }}
                   onSubmitForm={handleSaveExpense}
+                  selectedExpense={selectedExpense}
+                  onCloseDetail={() => setSelectedExpense(null)}
+                  onToggleStatus={handleToggleExpenseStatus}
                   categories={categories}
                   isSyncingExpense={isSyncingExpense}
                   syncMessage={syncMessage}
@@ -330,7 +339,7 @@ const MainAppContent: React.FC = () => {
               {currentTab === 'categories' && (
                 <CategoriesPage
                   onNotify={(type, msg) => addToast(type, msg)}
-                  onSelectExpense={handleOpenDetailModal}
+                  onSelectExpense={handleOpenDetailView}
                   onEditExpense={handleOpenEditExpense}
                   onRequestDeleteExpense={handleRequestDeleteExpense}
                   onOpenNewExpense={handleOpenNewExpense}
@@ -341,17 +350,6 @@ const MainAppContent: React.FC = () => {
           )}
         </main>
       </div>
-
-      {/* Expense Detail View & Audit Trail Modal */}
-      <ExpenseDetailModal
-        expense={selectedExpense}
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        onEdit={handleOpenEditExpense}
-        onDelete={handleRequestDeleteExpense}
-        onToggleStatus={handleToggleExpenseStatus}
-        isDeleting={isDeletingExpense && selectedExpense?.id === deletingExpenseId}
-      />
 
       {/* Confirm Delete Expense Dialog */}
       <ConfirmDialog

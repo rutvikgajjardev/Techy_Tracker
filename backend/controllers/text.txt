@@ -1,0 +1,386 @@
+================================================================================
+TECHY TRACKER - BACKEND DEVELOPER TO-DO GUIDE: DYNAMIC EXPENSE SHEET PDF API
+================================================================================
+Document Path: D:\@Python programs\react_techy_traker\backend\controllers\text.txt
+Target Route : GET /api/expenses/<int:expense_id>/pdf-data
+Framework    : Python Flask + Prisma Client Python (asyncio) + PostgreSQL
+Client Target: React Pure Vector PDF Generator (ExpenseSheetModal & pdfGenerator.ts)
+================================================================================
+
+This step-by-step implementation guide provides everything needed to make the
+Expense Sheet PDF completely dynamic by fetching live, fully-resolved relational
+data from your Flask + Prisma backend.
+
+Follow the checklist items ([ ]) below sequentially.
+
+================================================================================
+SECTION 1: PRISMA SCHEMA AUDIT & VERIFICATION
+================================================================================
+We inspected your active database schema at `backend/prisma/schema.prisma`.
+Here is the audit result for the 3 required PDF fields:
+
+[x] 1.1 Expense `updatedAt` Timestamp:
+    - Status: ALREADY PRESENT in `model Expense`!
+    - Code Reference (`schema.prisma` lines 81-82):
+      ```prisma
+      model Expense {
+        ...
+        createdAt    DateTime             @default(now())
+        updatedAt    DateTime             @updatedAt
+      }
+      ```
+    - Behavior: Prisma automatically refreshes `updatedAt` on every database write.
+      In the API, format this timestamp as an ISO 8601 string so the PDF displays
+      the exact last modified date & time.
+
+[x] 1.2 User UPI ID for Direct Settlement:
+    - Status: ALREADY PRESENT in `model User`!
+    - Code Reference (`schema.prisma` lines 20):
+      ```prisma
+      model User {
+        ...
+        upi_id            String?              @unique
+      }
+      ```
+    - Critical Naming Note:
+      * In Prisma/PostgreSQL, the database column is named `upi_id` (snake_case).
+      * In the JSON response for the PDF frontend, we map this to `paidByUpiId`
+        (and `upiId` inside participant objects) so the React component can
+        bind to it without any property name mismatches.
+
+[x] 1.3 Attached Bills & Receipts Storage:
+    - Status: ALREADY PRESENT in `model Expense`!
+    - Code Reference (`schema.prisma` line 69):
+      ```prisma
+      model Expense {
+        ...
+        images       String[]             @default([])
+      }
+      ```
+    - Behavior: Uses PostgreSQL's native string array (`TEXT[]`) to store
+      Cloudinary URLs, S3 URLs, or Base64 data strings. The PDF generator embeds
+      up to 2 of these receipts side-by-side or displays the dashed placeholder
+      box if the array is empty.
+
+--------------------------------------------------------------------------------
+[ ] 1.4 Schema Push / Migration (Only needed if you add new fields):
+--------------------------------------------------------------------------------
+Because all 3 required fields are ALREADY in your `schema.prisma`, NO database
+migrations are necessary right now.
+
+If you ever add new columns or tables in the future, run these two commands:
+```bash
+# Step 1: Push schema changes to your live PostgreSQL database
+npx prisma db push --schema=backend/prisma/schema.prisma
+
+# Step 2: Regenerate Prisma Client Python bindings
+prisma generate --schema=backend/prisma/schema.prisma
+```
+
+
+================================================================================
+SECTION 2: FLASK API ROUTE IMPLEMENTATION
+================================================================================
+You have an incomplete stub at lines 722–725 of `backend/controllers/expense_controller.py`:
+```python
+@expense_bp.route("/<int:expense_id>/pdf", methods=["GET"])
+def header(self):
+    ...
+```
+
+We will replace that stub with a clean, dedicated REST endpoint:
+`GET /api/expenses/<int:expense_id>/pdf-data`
+
+[ ] 2.1 The Prisma Python Query with Deep Nested Relations:
+To supply all data for the Expense Sheet PDF in a single query, execute:
+
+```python
+exp = await db.expense.find_unique(
+    where={"id": expense_id},
+    include={
+        "category": True,     # Fetches category name & icon
+        "paidBy": True,       # Fetches payer's name, email, and upi_id
+        "createdBy": True,    # Fetches recorder's name
+        "participants": {     # Fetches all split members
+            "include": {
+                "user": True  # Nested user info (name, email, upi_id)
+            }
+        }
+    }
+)
+```
+
+[ ] 2.2 Complete Route Code to Paste into `backend/controllers/expense_controller.py`:
+
+```python
+# =====================================================================
+# DEDICATED EXPENSE SHEET PDF DATA ENDPOINT
+# GET /api/expenses/<int:expense_id>/pdf-data
+# =====================================================================
+@expense_bp.route("/<int:expense_id>/pdf-data", methods=["GET"])
+@token_required
+def get_expense_pdf_data(current_user_id, expense_id):
+    """
+    Fetches fully-resolved relational data for the dynamic Expense Sheet PDF:
+    - Payer name and live UPI ID (for QR code & payment box)
+    - Full split distribution member list with Payer / Participant roles
+    - Attached bill / receipt image URLs
+    - Precise timestamps: expenseDate, createdAt, updatedAt
+    - Dynamic settlement status: COMPLETED if all participants are settled, else PENDING
+    """
+    async def _fetch():
+        db = Prisma()
+        await db.connect()
+        try:
+            # 1. Fetch expense with all required nested relations
+            exp = await db.expense.find_unique(
+                where={"id": expense_id},
+                include={
+                    "category": True,
+                    "paidBy": True,
+                    "createdBy": True,
+                    "participants": {
+                        "include": {
+                            "user": True
+                        }
+                    }
+                }
+            )
+
+            # 2. Return 404 if expense doesn't exist
+            if not exp:
+                return jsonify({
+                    "success": False,
+                    "error": f"Expense #{expense_id} not found"
+                }), 404
+
+            # 3. Format and serialize split distribution participants
+            participants_list = []
+            for p in (exp.participants or []):
+                user_obj = getattr(p, "user", None)
+                is_payer = (p.userId == exp.paidById)
+                
+                participants_list.append({
+                    "userId": p.userId,
+                    "name": user_obj.name if user_obj else f"User #{p.userId}",
+                    "email": getattr(user_obj, "email", None),
+                    "upiId": getattr(user_obj, "upi_id", None),
+                    "shareAmount": float(p.shareAmount) if p.shareAmount is not None else 0.0,
+                    "isPayer": is_payer,
+                    "role": "Payer" if is_payer else "Participant",
+                    "isSettled": is_payer or bool(p.isSettled) or (exp.status == "COMPLETED"),
+                    "settledAt": p.settledAt.isoformat() if getattr(p, "settledAt", None) else None
+                })
+
+            # Sort participants: Payer first, then alphabetically by name
+            participants_list.sort(key=lambda x: (not x["isPayer"], x["name"].lower()))
+
+            # 4. Compute live settlement status
+            non_payers = [p for p in (exp.participants or []) if p.userId != exp.paidById]
+            is_all_settled = len(non_payers) == 0 or all(bool(p.isSettled) for p in non_payers)
+            computed_status = "COMPLETED" if is_all_settled else "PENDING"
+
+            # 5. Build clean, unified payload for React PDF Generator
+            pdf_payload = {
+                "id": exp.id,
+                "title": exp.title,
+                "description": exp.description or "",
+                "amount": float(exp.amount),
+                "currency": getattr(exp, "currency", "INR") or "INR",
+                "status": computed_status,
+                "expenseDate": exp.expenseDate.isoformat() if exp.expenseDate else None,
+                "createdAt": exp.createdAt.isoformat() if exp.createdAt else None,
+                "updatedAt": exp.updatedAt.isoformat() if exp.updatedAt else None,
+                
+                # Category details
+                "categoryId": exp.categoryId,
+                "categoryName": exp.category.name if exp.category else "General",
+                
+                # Payer details (Payment settlement target)
+                "paidById": exp.paidById,
+                "paidByName": exp.paidBy.name if exp.paidBy else "Unknown",
+                "paidByUpiId": getattr(exp.paidBy, "upi_id", None) if getattr(exp, "paidBy", None) else None,
+                
+                # Recorder details
+                "createdById": exp.createdById,
+                "createdByName": exp.createdBy.name if exp.createdBy else "Unknown",
+                
+                # Attached Bill & Receipt Image URLs
+                "images": getattr(exp, "images", []) or [],
+                
+                # Split Distribution List
+                "participants": participants_list,
+                "participantCount": len(participants_list)
+            }
+
+            return jsonify({
+                "success": True,
+                "data": pdf_payload
+            }), 200
+
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to retrieve expense PDF data: {str(e)}"
+            }), 500
+        finally:
+            if db.is_connected():
+                await db.disconnect()
+
+    import asyncio
+    return asyncio.run(_fetch())
+```
+
+
+===============================================================================
+SECTION 3: EXPECTED JSON RESPONSE FORMAT
+===============================================================================
+When `GET /api/expenses/<expense_id>/pdf-data` is called, the endpoint must
+return this exact JSON structure:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 23,
+    "title": "Quarterly Team Dinner",
+    "description": "Celebration dinner at Downtown Bistro with team members",
+    "amount": 1300.00,
+    "currency": "INR",
+    "status": "COMPLETED",
+    "expenseDate": "2026-10-30T14:30:00.000Z",
+    "createdAt": "2026-10-30T14:28:15.000Z",
+    "updatedAt": "2026-10-30T15:10:42.000Z",
+    "categoryId": 3,
+    "categoryName": "Entertainment",
+    "createdById": 1,
+    "createdByName": "Radhe",
+    "paidById": 1,
+    "paidByName": "Radhe",
+    "paidByUpiId": "radhe@upi",
+    "images": [
+      "https://images.unsplash.com/photo-1554415707-9e420193af42?w=800"
+    ],
+    "participantCount": 4,
+    "participants": [
+      {
+        "userId": 1,
+        "name": "Radhe",
+        "email": "radhe@example.com",
+        "upiId": "radhe@upi",
+        "shareAmount": 325.00,
+        "isPayer": true,
+        "role": "Payer",
+        "isSettled": true,
+        "settledAt": "2026-10-30T14:28:15.000Z"
+      },
+      {
+        "userId": 2,
+        "name": "Mack",
+        "email": "mack@example.com",
+        "upiId": "mack@okhdfcbank",
+        "shareAmount": 325.00,
+        "isPayer": false,
+        "role": "Participant",
+        "isSettled": true,
+        "settledAt": "2026-10-30T15:02:11.000Z"
+      },
+      {
+        "userId": 3,
+        "name": "Ram",
+        "email": "ram@example.com",
+        "upiId": null,
+        "shareAmount": 325.00,
+        "isPayer": false,
+        "role": "Participant",
+        "isSettled": true,
+        "settledAt": "2026-10-30T15:05:30.000Z"
+      },
+      {
+        "userId": 4,
+        "name": "Rutvik",
+        "email": "rutvik@example.com",
+        "upiId": "rutvik@upi",
+        "shareAmount": 325.00,
+        "isPayer": false,
+        "role": "Participant",
+        "isSettled": true,
+        "settledAt": "2026-10-30T15:10:42.000Z"
+      }
+    ]
+  }
+}
+```
+
+--------------------------------------------------------------------------------
+Field Mapping Table (Backend Database -> JSON -> Frontend PDF):
+--------------------------------------------------------------------------------
+Database Field           JSON Field Key       Used In PDF Section
+--------------------------------------------------------------------------------
+Expense.id               id                   Voucher Ref: #EXP-00023
+Expense.title            title                EXPENSE TITLE / PURPOSE
+Expense.amount           amount               Total Amount & Expense Total
+Expense.expenseDate      expenseDate          EXPENSE DATE
+Expense.createdAt        createdAt            Created Time
+Expense.updatedAt        updatedAt            Last Updated Time
+Category.name            categoryName         Category Row & Top-Right Header Badge
+User.name (paidBy)       paidByName           Expense By (Paid By) & Payee Name
+User.upi_id (paidBy)     paidByUpiId          Payer UPI ID & UPI QR Code URI
+Expense.images           images               ATTACHED BILLS & RECEIPTS
+computed                 status               Status Badge (Pending / Completed)
+participants[].name      participants[].name  Member Name in Split Table
+participants[].role      participants[].role  Role Badge (Payer / Participant)
+
+
+================================================================================
+SECTION 4: FRONTEND INTEGRATION NOTE
+================================================================================
+In React (`frontend/src/components/expenses/ExpenseSheetModal.tsx`), hook this API
+endpoint directly into the PDF preview and download flow:
+
+[ ] 4.1 Update Modal Asset Loading Flow:
+When the modal opens or when the user clicks "Download Expense Sheet (PDF)":
+1. Call `apiService.get('/api/expenses/${expense.id}/pdf-data')`.
+2. Extract the fresh data: `const liveData = res.data.data;`.
+3. Construct the UPI Deep Link:
+   ```typescript
+   const upiUri = `upi://pay?pa=${encodeURIComponent(liveData.paidByUpiId)}&pn=${encodeURIComponent(liveData.paidByName)}&am=${Number(liveData.amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Expense Sheet: ${liveData.title}`)}`;
+   const qrCodeUrl = await generateUpiQrDataUrl(upiUri);
+   ```
+4. Preload attached receipt images to Base64:
+   ```typescript
+   const preloadedImages = await Promise.all(
+     (liveData.images || []).map((imgUrl: string) => preloadImageAsDataUrl(imgUrl))
+   );
+   ```
+5. Trigger 1-click vector PDF download:
+   ```typescript
+   await generateVectorExpenseSheetPdf(liveData, {
+     qrDataUrl: qrCodeUrl,
+     preloadedImages,
+   });
+   ```
+
+[ ] 4.2 Key Benefits of Dynamic API Fetching:
+- **Zero Stale Data**: The PDF always reflects the latest participants, payments, and timestamps.
+- **Dynamic UPI QR Code**: Always pulls the payer's up-to-date UPI ID from the User model.
+- **Accurate Settlement**: Computes whether the expense is fully settled or still pending in real time.
+
+
+================================================================================
+SECTION 5: TESTING & VERIFICATION CHECKLIST
+================================================================================
+Once you paste the route into `expense_controller.py`, verify with these steps:
+
+[ ] 1. Run the Flask backend server:
+       `python backend/app.py`
+[ ] 2. Test the API endpoint using curl or Postman:
+       `curl -X GET http://127.0.0.1:5000/api/expenses/23/pdf-data -H "Authorization: Bearer <TOKEN>"`
+[ ] 3. Confirm HTTP status `200 OK` and inspect JSON payload:
+       - Verify `paidByUpiId` contains payer's UPI ID.
+       - Verify `updatedAt` is a valid ISO 8601 string.
+       - Verify `participants` lists all split members with Payer sorted first.
+       - Verify `images` returns array of receipt photo URLs.
+[ ] 4. Open the React frontend, click "Download Expense Sheet (PDF)", and verify
+       that the downloaded PDF contains live data from the database.
+================================================================================

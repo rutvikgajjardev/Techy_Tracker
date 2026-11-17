@@ -153,18 +153,26 @@ def get_dashboard_summary(current_user_id):
                 for idx, item in enumerate(sorted_cats)
             ]
 
-            # 3. Spending Trends (User's personal expenditure share over time)
-            trend_buckets = {}
+            # 3. Spending Trends: Per-Expense Bars (individual bar per transaction)
+            trend_chart_data = []
             for exp in reversed(expenses):
                 personal_share, is_involved = _get_user_personal_share(exp, current_user_id)
                 if not is_involved or personal_share <= 0:
                     continue
-                date_key = exp.expenseDate.strftime(
-                    "%b %d" if period in ("this_week", "this_month", "custom") else "%b %Y"
-                )
-                trend_buckets[date_key] = trend_buckets.get(date_key, 0.0) + personal_share
 
-            trend_chart_data = [{"date": k, "amount": round(v, 2)} for k, v in trend_buckets.items()]
+                exp_dt = exp.createdAt if (exp.expenseDate.hour == 0 and exp.expenseDate.minute == 0 and getattr(exp, "createdAt", None)) else exp.expenseDate
+                time_str = exp_dt.strftime("%I:%M %p").lstrip("0")
+
+                trend_chart_data.append({
+                    "id": exp.id,
+                    "title": exp.title,
+                    "category": exp.category.name if exp.category else "General",
+                    "amount": round(personal_share, 2),
+                    "totalAmount": float(exp.amount),
+                    "date": exp.expenseDate.strftime("%d %b"),
+                    "time": time_str,
+                    "rawDate": exp.expenseDate.isoformat()
+                })
 
             # 4. Recent Expenses (top 5 involving the logged-in user)
             recent_expenses = []

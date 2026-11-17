@@ -4,9 +4,11 @@ import { AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 interface DialogProps {
   isOpen: boolean;
   title: string;
+  subtitle?: string;
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  showCancel?: boolean;
   tone?: 'danger' | 'warning' | 'info';
   isLoading?: boolean;
   loadingLabel?: string;
@@ -17,9 +19,11 @@ interface DialogProps {
 export const ConfirmDialog: React.FC<DialogProps> = ({
   isOpen,
   title,
+  subtitle,
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  showCancel = true,
   tone = 'danger',
   isLoading = false,
   loadingLabel = 'Processing...',
@@ -40,7 +44,9 @@ export const ConfirmDialog: React.FC<DialogProps> = ({
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
               tone === 'danger'
                 ? 'bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400'
-                : 'bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400'
+                : tone === 'warning'
+                ? 'bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400'
+                : 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400'
             }`}
           >
             {isLoading ? (
@@ -56,7 +62,7 @@ export const ConfirmDialog: React.FC<DialogProps> = ({
               {title}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {isLoading ? 'Please wait...' : 'Please confirm this action'}
+              {subtitle || (isLoading ? 'Please wait...' : tone === 'warning' && !showCancel ? 'Notice' : 'Please confirm this action')}
             </p>
           </div>
         </div>
@@ -66,14 +72,16 @@ export const ConfirmDialog: React.FC<DialogProps> = ({
         </p>
 
         <div className="pt-2 flex justify-end gap-2.5">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {cancelLabel}
-          </button>
+          {showCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isLoading}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={onConfirm}
@@ -81,6 +89,8 @@ export const ConfirmDialog: React.FC<DialogProps> = ({
             className={`px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
               tone === 'danger'
                 ? 'bg-rose-600 hover:bg-rose-700'
+                : tone === 'warning'
+                ? 'bg-amber-600 hover:bg-amber-700'
                 : 'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
